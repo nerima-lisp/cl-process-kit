@@ -1,0 +1,16 @@
+# Compiled Lisp artifacts
+*.fasl
+*.dfsl
+*.fas
+*.lib
+
+# Nix build outputs
+/result
+/result-*
+
+# Editor/tool scratch output
+tmp/
+tmp-debug/
+
+# Serena project cache
+.serena/cache/
