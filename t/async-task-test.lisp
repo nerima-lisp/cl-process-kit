@@ -20,7 +20,7 @@
       (expect (= 1 (count :terminal seen)) :to-be-truthy)))
 
   (it "communicate-async isolates callback errors"
-    (let* ((process (spawn "/usr/bin/printf" (list "abc") :output :stream :error :stream))
+    (let* ((process (spawn "printf" (list "abc") :output :stream :error :stream :search t :environment (sb-ext:posix-environ)))
            (task (communicate-async process :result-type :octets
                                     :event-callback (lambda (event)
                                                       (declare (ignore event))
@@ -74,7 +74,7 @@
                (let ((timed-out (gensym)))
                  (not (eq (sb-thread:join-thread thread :timeout 2d0 :default timed-out) timed-out)))))
       (loop repeat 20
-            do (let* ((process (spawn "/usr/bin/yes" nil :output :stream :error :stream))
+            do (let* ((process (spawn "yes" nil :output :stream :error :stream :search t :environment (sb-ext:posix-environ)))
                       (streams (list (process-output process) (process-stderr process)))
                       (seen nil)
                       (task (communicate-async process :result-type :octets :event-queue-capacity 1
@@ -99,8 +99,8 @@
                            (push (list (process-stdin process) (process-output process) (process-stderr process))
                                  streams)
                            process))))
-                   (let ((result (run-pipeline (list (make-command "/usr/bin/printf" (list "abc"))
-                                                     (make-command "/usr/bin/tr" (list "a-z" "A-Z"))))))
+                   (let ((result (run-pipeline (list (make-command "printf" (list "abc") :search t)
+                                                     (make-command "tr" (list "a-z" "A-Z") :search t)))))
                      (expect (string= (pipeline-result-stdout result) "ABC") :to-be-truthy)))
                  (expect (every (function process-kit::process-handle-reaped-p) processes) :to-be-truthy)
                  (expect (every (lambda (process-streams) (every (function %closed-stream-p) process-streams)) streams)

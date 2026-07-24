@@ -15,7 +15,7 @@
   (cl-weave:it-property "cat echoes any octet vector unchanged (feeder/capture round trip)"
       ((bytes (cl-weave:gen-vector (cl-weave:gen-integer :min 0 :max 255) :max-length 48)))
     (let* ((input (coerce bytes '(vector (unsigned-byte 8))))
-           (result (run "/bin/cat" nil :input input :result-type :octets)))
+           (result (run "cat" nil :input input :result-type :octets :search t)))
       (expect (process-success-p result) :to-be-truthy)
       (expect (coerce (process-result-stdout result) 'list) :to-equal (coerce bytes 'list))))
 

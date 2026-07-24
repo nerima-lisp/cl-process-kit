@@ -61,10 +61,10 @@
 
   (it "accepts a fully-specified valid command, deep-copying mutable slots"
     (let* ((args (list "a" "b"))
-           (command (make-command "/bin/echo" args
+           (command (make-command "echo" args
                                   :environment-policy (list "LANG=C")
                                   :environment-update (list (cons "X" "1") (cons "Y" nil))
-                                  :stderr :stdout :result-type :octets)))
+                                  :stderr :stdout :result-type :octets :search t)))
       (expect (command-p command) :to-be-truthy)
       (expect (command-arguments command) :to-equal '("a" "b"))
       ;; Mutating the caller's list must not reach into the spec.

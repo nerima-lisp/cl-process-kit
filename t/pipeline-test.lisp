@@ -4,16 +4,16 @@
 
 (describe "pipelines"
   (it "run-pipeline streams stdout between stages"
-    (let ((result (run-pipeline (list (make-command "/usr/bin/printf" (list "abc"))
-                                      (make-command "/usr/bin/tr" (list "a-z" "A-Z"))))))
+    (let ((result (run-pipeline (list (make-command "printf" (list "abc") :search t)
+                                      (make-command "tr" (list "a-z" "A-Z") :search t)))))
       (expect (pipeline-success-p result) :to-be-truthy)
       (expect (string= (pipeline-result-stdout result) "ABC") :to-be-truthy)
       (expect (= (length (pipeline-result-results result)) 2) :to-be-truthy)))
 
   (it "run-pipeline preserves arbitrary bytes across two stages"
     (let* ((octets (make-array 3 :element-type '(unsigned-byte 8) :initial-contents '(0 128 255)))
-           (result (run-pipeline (list (make-command "/bin/cat" nil :result-type :octets)
-                                       (make-command "/bin/cat" nil :result-type :octets))
+           (result (run-pipeline (list (make-command "cat" nil :result-type :octets :search t)
+                                       (make-command "cat" nil :result-type :octets :search t))
                                  :input octets)))
       (expect (pipeline-success-p result) :to-be-truthy)
       (expect (equalp (pipeline-result-stdout result) octets) :to-be-truthy)))
@@ -85,7 +85,7 @@
                            (and (process-result-cancelled-p stage-result) (pipeline-result-cancelled-p pipeline-result)))
                        :to-be-truthy))))
       (handler-case
-          (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "/bin/cat" nil))
+          (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "cat" nil :search t))
                         :timeout 0.1d0 :grace-period 0.1d0 :on-timeout :error)
         (process-timeout-error (condition) (check-condition condition :timeout)))
       (let* ((token (make-cancellation-token))
@@ -93,7 +93,7 @@
                                                :name "process-kit pipeline condition cancellation test")))
         (unwind-protect
              (handler-case
-                 (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "/bin/cat" nil))
+                 (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "cat" nil :search t))
                                :cancellation-token token :grace-period 0.1d0 :on-cancel :error)
                (process-cancelled-error (condition) (check-condition condition :cancel)))
           (sb-thread:join-thread canceller))))))

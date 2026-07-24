@@ -22,7 +22,7 @@
     (with-open-file (out path :direction :output :element-type element-type :if-exists :supersede)
       (funcall writer out))
     (with-open-file (in path :element-type element-type)
-      (funcall continuation (run "/bin/cat" nil :input in :result-type result-type)))))
+      (funcall continuation (run "cat" nil :input in :result-type result-type :search t)))))
 
 (describe "stream-valued :input"
   (it "feeds a child from a character-stream input, encoding at the boundary"
@@ -44,7 +44,7 @@
 
 (describe "process-handle query edge arms"
   (it "process-wait returns NIL once its own timeout expires on a live child"
-    (with-process (process (spawn "/bin/sleep" (list "5")))
+    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
       (expect (process-wait process :timeout 0.05d0) :to-be-null)))
 
   (it "process-signal is NIL for a normally exited child and process-exit-code is NIL for a signaled one"
@@ -54,7 +54,7 @@
       (expect (process-exit-code exited) :to-equal 0)
       (expect (process-signal exited) :to-be-null))
     ;; A SIGKILL: signal is present, exit-code is absent.
-    (with-process (killed (spawn "/bin/sleep" (list "5")))
+    (with-process (killed (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
       (process-kill killed)
       (process-wait killed)
       (expect (process-signal killed) :to-equal 9)
@@ -112,7 +112,7 @@
         (signals communicate-options-mismatch (communicate process :timeout 1)))))
 
   (it "treats a fresh but content-equal octet-vector input as the same options"
-    (with-process (process (spawn "/bin/cat" nil :input :stream :output :stream :error :stream))
+    (with-process (process (spawn "cat" nil :input :stream :output :stream :error :stream :search t :environment (sb-ext:posix-environ)))
       (let* ((bytes (sb-ext:string-to-octets "abc" :external-format :utf-8))
              (first (communicate process :input bytes :result-type :octets)))
         (expect (eq (communicate process :input (copy-seq bytes) :result-type :octets) first)
@@ -139,14 +139,14 @@
 
 (describe "process-group signaling"
   (it "rejects an out-of-range signal number"
-    (with-process (process (spawn "/bin/sleep" (list "5")))
+    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
       (expect (raises-error-p (lambda () (process-terminate process 99))) :to-be-truthy)
       (expect (raises-error-p (lambda () (process-send-leader-signal process 0))) :to-be-truthy)))
 
   (it "signals the owned process group directly"
-    (with-process (process (spawn "/bin/sleep" (list "5")))
+    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
       (expect (process-send-group-signal process 15) :to-be-truthy)))
 
   (it "signals the live group leader directly"
-    (with-process (process (spawn "/bin/sleep" (list "5")))
+    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
       (expect (process-send-leader-signal process 15) :to-be-truthy))))

@@ -51,7 +51,7 @@ LOG-KIT records it emitted, in emission order."
 
 (describe "structured logging via *process-logger*"
   (it "emits an :info 'process spawned' record carrying program, pid, and pgid"
-    (let* ((records (capturing-log (run "/bin/echo" (list "hello"))))
+    (let* ((records (capturing-log (run "echo" (list "hello") :search t)))
            (spawned (record-with-message records "process spawned")))
       (expect spawned :not :to-be-null)
       (expect (log-kit:log-record-level spawned) :to-equal log-kit:+level-info+)
@@ -68,7 +68,7 @@ LOG-KIT records it emitted, in emission order."
 
   (it "emits a :warn 'process timed out, escalating' record on a real timeout"
     (let* ((records (capturing-log
-                      (run "/bin/sleep" (list "10") :timeout 0.2 :on-timeout :return)))
+                      (run "sleep" (list "10") :timeout 0.2 :on-timeout :return :search t)))
            (timeout (record-with-message records "process timed out, escalating")))
       (expect timeout :not :to-be-null)
       (expect (log-kit:log-record-level timeout) :to-equal log-kit:+level-warn+)
@@ -84,8 +84,8 @@ LOG-KIT records it emitted, in emission order."
                        :name "cl-process-kit/test canceller"))
            (records (capturing-log
                       (unwind-protect
-                           (run "/bin/sleep" (list "10")
-                                :cancellation-token token :on-cancel :return)
+                           (run "sleep" (list "10")
+                                :cancellation-token token :on-cancel :return :search t)
                         (sb-thread:join-thread canceller))))
            (cancelled (record-with-message records "process cancelled, escalating")))
       (expect cancelled :not :to-be-null)
@@ -95,4 +95,4 @@ LOG-KIT records it emitted, in emission order."
     (let ((*process-logger* nil))
       ;; A direct sanity check that the default path allocates no records:
       ;; CAPTURING-LOG rebinds the logger, so we assert against a plain run here.
-      (expect (process-success-p (run "/bin/echo" (list "quiet"))) :to-be-truthy))))
+      (expect (process-success-p (run "echo" (list "quiet") :search t)) :to-be-truthy))))

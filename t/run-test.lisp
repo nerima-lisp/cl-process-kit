@@ -21,7 +21,12 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
 (describe "run-command"
   (it "run-command distinguishes an empty replacement environment"
-    (let ((result (run-command (make-command "/usr/bin/env" nil :environment-policy nil))))
+    ;; :environment-policy nil below deliberately gives the child (and thus
+    ;; :search's own PATH lookup) an empty environment, so the program must
+    ;; already be resolved to an absolute path via the real environment
+    ;; before the command is built, rather than via :search t.
+    (let* ((env-program (process-kit::%resolve-executable "env" nil (sb-ext:posix-environ) nil))
+           (result (run-command (make-command (namestring env-program) nil :environment-policy nil))))
       (expect (string= (process-result-stdout result) "") :to-be-truthy)))
 
   (it "run-command applies environment updates and deletions"
@@ -57,7 +62,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
 (describe "run basics"
   (it "run captures stdout and a zero exit-code on success"
-    (let ((result (run "/bin/echo" (list "hello"))))
+    (let ((result (run "echo" (list "hello") :search t)))
       (expect (= (process-result-exit-code result) 0) :to-be-truthy)
       (expect (string= (process-result-stdout result) (format nil "hello~%")) :to-be-truthy)
       (expect (process-result-timed-out-p result) :to-be nil)
@@ -80,7 +85,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (expect (string= (process-result-stderr result) (format nil "err~%")) :to-be-truthy)))
 
   (it "run forwards a string INPUT to the child's standard input"
-    (let ((result (run "/bin/cat" nil :input "piped-in")))
+    (let ((result (run "cat" nil :input "piped-in" :search t)))
       (expect (string= (process-result-stdout result) "piped-in") :to-be-truthy)))
 
   (it "run does not search PATH unless explicitly requested"
@@ -105,7 +110,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
         (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
 
   (it "run rejects inherited standard input because it cannot be isolated"
-    (signals error (run "/bin/cat" nil :input t)))
+    (signals error (run "cat" nil :input t :search t)))
 
   (it "run rejects a clock that does not implement the CL-BOUNDARY-KIT protocol"
     (signals error (run "/bin/true" nil :clock :not-a-clock)))
@@ -249,7 +254,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
   (it "writes octet input without character-stream re-encoding"
     (let* ((input (make-array 4 :element-type '(unsigned-byte 8) :initial-contents '(0 127 128 255)))
-           (result (run "/bin/cat" nil :input input :result-type :octets)))
+           (result (run "cat" nil :input input :result-type :octets :search t)))
       (expect (equalp (process-result-stdout result) input) :to-be-truthy)))
 
   (it "run decodes UTF-8 after a multibyte sequence crosses a read boundary"
@@ -269,7 +274,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
   (it "run encodes string input at the API boundary"
     (let* ((input (concatenate 'string "snowman " (string (code-char #x2603))))
-           (result (run "/bin/cat" nil :input input :external-format :utf-8)))
+           (result (run "cat" nil :input input :external-format :utf-8 :search t)))
       (expect (string= (process-result-stdout result) input) :to-be-truthy)))
 
   (it "run signals process-io-error for invalid UTF-8 when decoding-error-policy is :error"
