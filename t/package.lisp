@@ -3,7 +3,7 @@
 (defpackage #:cl-process-kit/test
   (:use #:cl #:process-kit)
   (:shadowing-import-from #:cl-weave #:describe)
-  (:import-from #:cl-weave #:expect #:it #:signals #:run-all)
+  (:import-from #:cl-weave #:expect #:it #:signals #:run-all #:with-mocked-functions)
   (:export #:run-tests))
 
 (in-package #:cl-process-kit/test)

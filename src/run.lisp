@@ -1,126 +1,118 @@
 ;;;; src/run.lisp
 ;;;;
-;;;; RUN is the high-level, synchronous entry point: spawn -> poll for
-;;;; completion/timeout -> escalate signals on timeout -> return a
-;;;; PROCESS-RESULT (or signal PROCESS-TIMEOUT-ERROR).
+;;;; RUN is the high-level, synchronous entry point: spawn -> COMMUNICATE ->
+;;;; return a PROCESS-RESULT (or signal PROCESS-TIMEOUT-ERROR/PROCESS-CANCELLED-ERROR).
+;;;; RUN-COMMAND is its COMMAND-SPEC-driven counterpart, and RUN-COMMAND-ASYNC
+;;;; is the COMMAND-SPEC-driven counterpart of COMMUNICATE-ASYNC.
 
 (in-package #:process-kit)
 
-(defparameter *default-poll-interval-seconds* 0.05
-  "Interval between liveness checks while RUN waits for a process.")
-
-(defun %coerce-input-stream (input)
-  "Convert a plain string INPUT into a stream so SB-EXT:RUN-PROGRAM can use
-it as the child's standard input. Everything else (NIL, T, a stream, a
-pathname) is passed through unchanged."
-  (if (stringp input)
-      (make-string-input-stream input)
-      input))
-
-(defun %start-output-copier (process-stream sink)
-  "Spawn a thread that copies everything read from PROCESS-STREAM into SINK.
-Returns the thread, or NIL if PROCESS-STREAM is NIL."
-  (when process-stream
-    (sb-thread:make-thread
-     (lambda ()
-       (ignore-errors
-        (let ((buffer (make-string 4096)))
-          (loop for count = (read-sequence buffer process-stream)
-                while (plusp count)
-                do (write-string buffer sink :end count)))))
-     :name "process-kit output copier")))
-
-(defun %join-copier (thread)
-  (when thread
-    (ignore-errors (sb-thread:join-thread thread))))
-
-(defun %poll-until (predicate deadline clock sleep-fn poll-interval)
-  "Call PREDICATE repeatedly until it returns true, or until (FUNCALL CLOCK)
-reaches or passes DEADLINE (both expressed in INTERNAL-TIME-UNITS-PER-SECOND
-units). Sleeps POLL-INTERVAL seconds between polls via SLEEP-FN. Returns T
-if PREDICATE became true, NIL on timeout."
-  (loop
-    (when (funcall predicate)
-      (return t))
-    (when (>= (funcall clock) deadline)
-      (return nil))
-    (funcall sleep-fn poll-interval)))
-
-(defun %deadline-from-now (clock seconds)
-  (+ (funcall clock) (round (* seconds internal-time-units-per-second))))
-
-(defun %process-outcome (process)
-  "Return (VALUES EXIT-CODE SIGNAL) for a finished PROCESS. EXIT-CODE is NIL
-when the process was terminated by a signal instead of exiting normally."
-  (let ((status (sb-ext:process-status process))
-        (code (sb-ext:process-exit-code process)))
-    (if (eq status :signaled)
-        (values nil code)
-        (values (or code 0) nil))))
-
-(defun %escalate-to-kill (process kill-signal grace-period-seconds clock sleep-fn poll-interval)
-  "Send KILL-SIGNAL to PROCESS, wait up to GRACE-PERIOD-SECONDS for it to
-exit, and send SIGKILL if it is still alive afterwards."
-  (sb-ext:process-kill process kill-signal :process-group)
-  (unless (%poll-until (lambda () (not (process-alive-p process)))
-                       (%deadline-from-now clock grace-period-seconds)
-                       clock sleep-fn poll-interval)
-    (process-kill process))
-  (process-wait process))
-
-(defun run (command args
-            &key input (search t)
-                 timeout-seconds
-                 (on-timeout :error)
-                 (grace-period-seconds 0.2)
-                 (kill-signal 15)
-                 (clock #'get-internal-real-time)
-                 (sleep-fn #'sleep)
-                 (poll-interval *default-poll-interval-seconds*))
-  "Run COMMAND with ARGS synchronously, capturing standard output and
-standard error as strings, and return a PROCESS-RESULT.
-
-If TIMEOUT-SECONDS is given and exceeded, the process is escalated from
-KILL-SIGNAL (SIGTERM by default) to SIGKILL after GRACE-PERIOD-SECONDS. When
-ON-TIMEOUT is :ERROR (the default), a PROCESS-TIMEOUT-ERROR is signalled
-after the process has been cleaned up. When ON-TIMEOUT is :RETURN, a
-PROCESS-RESULT with TIMED-OUT-P set to T is returned instead and no error is
-signalled.
-
-CLOCK and SLEEP-FN are the polling primitives (default GET-INTERNAL-REAL-TIME
-and SLEEP); replacing them lets tests exercise the timeout/escalation logic
-deterministically without consuming real wall-clock time."
-  (let* ((process (spawn command args
-                         :input (%coerce-input-stream input)
-                         :output :stream
-                         :error :stream
-                         :search search))
-         (stdout-buffer (make-string-output-stream))
-         (stderr-buffer (make-string-output-stream))
-         (stdout-copier (%start-output-copier (sb-ext:process-output process) stdout-buffer))
-         (stderr-copier (%start-output-copier (sb-ext:process-error process) stderr-buffer)))
+(defun %run-base
+    (command arguments
+     &key (search nil) input environment directory
+       ((:error error-policy) :capture)
+       timeout (grace-period 1.0d0)
+       (poll-interval +default-poll-interval+) (timeout-signal 15) (kill-signal 9) (on-timeout :error)
+       (max-output-characters +default-output-limit+) (drain-timeout-seconds +default-drain-timeout-seconds+)
+       (result-type :string) (external-format :default) (decoding-error-policy :replace)
+       (clock +default-clock+) (sleeper +default-sleeper+))
+  (%ensure (and (or (stringp command) (pathnamep command)) (plusp (length (namestring command))))
+           "COMMAND must be a non-empty string or pathname.")
+  (%ensure (and (listp arguments) (every #'stringp arguments))
+           "ARGUMENTS must be a proper list of strings.")
+  (%ensure (member error-policy '(:capture :output) :test #'eq) "ERROR must be :CAPTURE or :OUTPUT.")
+  (let* ((effective-environment (or environment (copy-list (sb-ext:posix-environ))))
+         (process (spawn command arguments
+                          :search search :input (and input :stream) :output :stream
+                          :error (if (eq error-policy :output) :output :stream)
+                          :environment effective-environment :directory directory
+                          :external-format :latin-1)))
     (unwind-protect
-        (let ((timed-out-p
-                (and timeout-seconds
-                     (not (%poll-until (lambda () (not (process-alive-p process)))
-                                       (%deadline-from-now clock timeout-seconds)
-                                       clock sleep-fn poll-interval)))))
-          (if timed-out-p
-              (%escalate-to-kill process kill-signal grace-period-seconds
-                                 clock sleep-fn poll-interval)
-              (process-wait process))
-          (%join-copier stdout-copier)
-          (%join-copier stderr-copier)
-          (multiple-value-bind (exit-code signal) (%process-outcome process)
-            (if (and timed-out-p (eq on-timeout :error))
-                (error 'process-timeout-error
-                       :command command
-                       :args args
-                       :timeout-seconds timeout-seconds)
-                (make-process-result :exit-code exit-code
-                                     :stdout (get-output-stream-string stdout-buffer)
-                                     :stderr (get-output-stream-string stderr-buffer)
-                                     :timed-out-p timed-out-p
-                                     :signal signal))))
-      (%join-copier stdout-copier)
-      (%join-copier stderr-copier))))
+         (let ((result (communicate process :input input :timeout timeout
+                                             :grace-period grace-period :poll-interval poll-interval
+                                             :timeout-signal timeout-signal :kill-signal kill-signal
+                                             :on-timeout :return :max-output-characters max-output-characters
+                                             :drain-timeout-seconds drain-timeout-seconds
+                                             :result-type result-type :external-format external-format
+                                             :decoding-error-policy decoding-error-policy
+                                             :clock clock :sleeper sleeper)))
+           (setf (process-result-program result) command (process-result-arguments result) arguments)
+           (when (and (process-result-timed-out-p result) (eq on-timeout :error))
+             (error 'process-timeout-error
+                    :command command :arguments arguments :timeout timeout :result result))
+           result)
+      (unless (process-handle-reaped-p process)
+        (ignore-errors (close-process process :terminate t :timeout grace-period)))
+      (ignore-errors (close-process-streams process)))))
+
+(defparameter *run-without-cancellation* #'%run-base)
+
+(defun run (command arguments &rest options)
+  (let ((*current-cancellation-token* (getf options :cancellation-token))
+        (*current-on-cancel* (if (member :on-cancel options :test #'eq) (getf options :on-cancel) :error)))
+    (apply *run-without-cancellation* command arguments
+           (%plist-without options '(:cancellation-token :on-cancel)))))
+
+(defun run-shell (command &rest options)
+  (apply #'run "/bin/sh" (list "-c" command) options))
+
+(defun run/checked (command arguments &rest options)
+  (let ((result (apply #'run command arguments options)))
+    (cond
+      ((process-result-cancelled-p result) (error 'process-cancelled-error :result result))
+      ((not (process-success-p result)) (error 'process-exit-error :result result)))
+    result))
+
+(defun run-command (command &key input timeout (grace-period 1.0d0) (on-timeout :error) cancellation-token
+                               (on-cancel :error) (max-output-characters +default-output-limit+)
+                               (drain-timeout-seconds +default-drain-timeout-seconds+))
+  (check-type command command-spec)
+  (with-process (process (spawn-command command :stdin (if input :pipe nil)))
+    (let ((result (communicate process :input input :timeout timeout :grace-period grace-period
+                                        :on-timeout :return :on-cancel :return
+                                        :cancellation-token cancellation-token
+                                        :max-output-characters max-output-characters
+                                        :drain-timeout-seconds drain-timeout-seconds
+                                        :result-type (command-result-type command)
+                                        :external-format (command-external-format command)
+                                        :decoding-error-policy (command-decoding-error-policy command))))
+      (setf (process-result-program result) (command-program command)
+            (process-result-arguments result) (command-arguments command))
+      (cond
+        ((and (process-result-timed-out-p result) (eq on-timeout :error))
+         (error 'process-timeout-error
+                :command (command-program command) :arguments (command-arguments command)
+                :timeout timeout :result result))
+        ((and (process-result-cancelled-p result) (eq on-cancel :error))
+         (error 'process-cancelled-error :result result)))
+      result)))
+
+(defun run-command-async (command &rest options)
+  "Spawn COMMAND and return a PROCESS-TASK whose terminal event owns stream cleanup."
+  (check-type command command-spec)
+  (%ensure (not (member :cancellation-token options :test #'eq))
+           "RUN-COMMAND-ASYNC owns its cancellation token; cancel the returned task.")
+  (let* ((input (getf options :input))
+         (user-callback (getf options :event-callback))
+         (process (spawn-command command :stdin (if input :pipe nil)))
+         (communication-options
+           (%plist-without options '(:event-callback :result-type :external-format :decoding-error-policy))))
+    (handler-case
+        (apply #'communicate-async process
+               (append communication-options
+                       (list :result-type (command-result-type command)
+                             :external-format (command-external-format command)
+                             :decoding-error-policy (command-decoding-error-policy command)
+                             :event-callback
+                             (lambda (event)
+                               (when (eq (process-event-kind event) :terminal) (close-process-streams process))
+                               (when user-callback (funcall user-callback event))))))
+      (condition (condition)
+        (ignore-errors (close-process-streams process))
+        (error condition)))))
+
+(defun run-command/checked (command &rest options)
+  "Run COMMAND and signal PROCESS-EXIT-ERROR unless it succeeds."
+  (let ((result (apply #'run-command command options)))
+    (unless (process-success-p result) (error 'process-exit-error :result result))
+    result))

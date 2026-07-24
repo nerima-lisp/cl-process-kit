@@ -3,89 +3,299 @@
 (in-package #:cl-process-kit/test)
 
 (defun %make-jump-clock ()
-  "A CLOCK replacement that returns 0 on its first call and then jumps 1000
-simulated seconds further into the future on every subsequent call. Each
-%POLL-UNTIL round-trip therefore observes its deadline as already passed --
-whether that deadline was computed from an earlier or a later call -- so RUN
-never has to really wait out TIMEOUT-SECONDS or GRACE-PERIOD-SECONDS."
+  "A CL-BOUNDARY-KIT clock boundary whose CLOCK-MONOTONIC reads 0 seconds on
+its first call and then jumps 1000 simulated seconds further into the future
+on every subsequent call. Each %POLL-UNTIL round-trip therefore observes its
+deadline as already passed -- whether that deadline was computed from an
+earlier or a later call -- so RUN never has to really wait out
+TIMEOUT-SECONDS or GRACE-PERIOD-SECONDS."
   (let ((calls 0))
-    (lambda ()
-      (incf calls)
-      (if (= calls 1)
-          0
-          (* calls 1000 internal-time-units-per-second)))))
+    (cl-boundary-kit:make-clock
+     :monotonic-fn (lambda () (incf calls) (if (= calls 1) 0 (* calls 1000))))))
 
-(defun %counting-sleep-fn (counter)
-  (lambda (seconds)
-    (declare (ignore seconds))
-    (incf (car counter))
-    nil))
+(defun %counting-sleeper (counter)
+  "A CL-BOUNDARY-KIT sleeper boundary that never really sleeps, incrementing
+the car of COUNTER on every SLEEPER-SLEEP call instead."
+  (cl-boundary-kit:make-sleeper
+   :sleep-fn (lambda (seconds) (declare (ignore seconds)) (incf (car counter)) nil)))
 
-(it "run captures stdout and a zero exit-code on success"
-  (let ((result (run "/bin/echo" (list "hello"))))
-    (expect (= (process-result-exit-code result) 0) :to-be-truthy)
-    (expect (string= (process-result-stdout result) (format nil "hello~%"))
-           :to-be-truthy)
-    (expect (process-result-timed-out-p result) :to-be nil)
-    (expect (process-result-signal result) :to-be nil)))
+(describe "run-command"
+  (it "run-command distinguishes an empty replacement environment"
+    (let ((result (run-command (make-command "/usr/bin/env" nil :environment-policy nil))))
+      (expect (string= (process-result-stdout result) "") :to-be-truthy)))
 
-(it "run reports a non-zero exit-code"
-  (let ((result (run "/bin/sh" (list "-c" "exit 3"))))
-    (expect (= (process-result-exit-code result) 3) :to-be-truthy)))
+  (it "run-command applies environment updates and deletions"
+    (let* ((command (make-command "/bin/sh" (list "-c" "printf %s:${DROP+present} \"$KEEP\"")
+                                  :environment-policy (list "KEEP=old" "DROP=yes")
+                                  :environment-update (list (cons "KEEP" "new") (cons "DROP" nil))))
+           (result (run-command command)))
+      (expect (string= (process-result-stdout result) "new:") :to-be-truthy)))
 
-(it "run captures stderr separately from stdout"
-  (let ((result (run "/bin/sh" (list "-c" "echo out; echo err 1>&2"))))
-    (expect (string= (process-result-stdout result) (format nil "out~%")) :to-be-truthy)
-    (expect (string= (process-result-stderr result) (format nil "err~%")) :to-be-truthy)))
+  (it "run-command merges stderr into stdout"
+    (let ((result (run-command (make-command "/bin/sh" (list "-c" "printf out; printf err >&2") :stderr :stdout))))
+      (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
+      (expect (string= (process-result-stderr result) "") :to-be-truthy)))
 
-(it "run forwards a string INPUT to the child's standard input"
-  (let ((result (run "/bin/cat" nil :input "piped-in")))
-    (expect (string= (process-result-stdout result) "piped-in") :to-be-truthy)))
+  (it "run-command cancels a blocked stdin write"
+    (let* ((token (make-cancellation-token))
+           (input (make-string (* 1024 1024) :initial-element (code-char 120))))
+      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
+      (let ((result (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
+                                 :input input :cancellation-token token :grace-period 0.1d0 :on-cancel :return)))
+        (expect (process-result-cancelled-p result) :to-be-truthy)
+        (expect (= (process-result-signal result) 9) :to-be-truthy))))
 
-(it "run with on-timeout :return sets timed-out-p on a real timeout"
-  (let ((result (run "/bin/sh" (list "-c" "sleep 5")
-                     :timeout-seconds 0.2
-                     :grace-period-seconds 0.1
-                     :on-timeout :return)))
-    (expect (process-result-timed-out-p result) :to-be-truthy)))
+  (it "run-command/checked returns a successful command result"
+    (let ((result (run-command/checked (make-command "/bin/sh" (list "-c" "printf ok")))))
+      (expect (process-success-p result) :to-be-truthy)
+      (expect (string= (process-result-stdout result) "ok") :to-be-truthy)))
 
-(it "run with on-timeout :error signals process-timeout-error with the right slots"
-  (signals process-timeout-error
-    (run "/bin/sh" (list "-c" "sleep 5")
-        :timeout-seconds 0.2
-        :grace-period-seconds 0.1
-        :on-timeout :error))
-  (handler-case
-      (run "/bin/sh" (list "-c" "sleep 5")
-          :timeout-seconds 0.2
-          :grace-period-seconds 0.1
-          :on-timeout :error)
-    (process-timeout-error (e)
-      (expect (string= (process-timeout-error-command e) "/bin/sh") :to-be-truthy)
-      (expect (= (process-timeout-error-timeout-seconds e) 0.2) :to-be-truthy))))
+  (it "run-command/checked signals process-exit-error"
+    (handler-case (run-command/checked (make-command "/bin/sh" (list "-c" "exit 6")))
+      (process-exit-error (condition)
+        (expect (= (process-result-exit-code (process-exit-error-result condition)) 6) :to-be-truthy)))))
 
-(it "run escalates to SIGKILL when the child ignores SIGTERM"
-  (let ((result (run "/bin/sh" (list "-c" "trap '' TERM; sleep 5")
-                     :timeout-seconds 0.2
-                     :grace-period-seconds 0.2
-                     :on-timeout :return)))
-    (expect (process-result-timed-out-p result) :to-be-truthy)
-    (expect (= (process-result-signal result) 9) :to-be-truthy)))
+(describe "run basics"
+  (it "run captures stdout and a zero exit-code on success"
+    (let ((result (run "/bin/echo" (list "hello"))))
+      (expect (= (process-result-exit-code result) 0) :to-be-truthy)
+      (expect (string= (process-result-stdout result) (format nil "hello~%")) :to-be-truthy)
+      (expect (process-result-timed-out-p result) :to-be nil)
+      (expect (process-result-signal result) :to-be nil)))
 
-(it "run's polling loop honors an injected CLOCK/SLEEP-FN without consuming real time"
-  (let* ((sleep-calls (list 0))
-         (started (get-internal-real-time))
-         (result (run "/bin/sh" (list "-c" "sleep 5")
-                     :timeout-seconds 1
-                     :grace-period-seconds 1
-                     :on-timeout :return
-                     :clock (%make-jump-clock)
-                     :sleep-fn (%counting-sleep-fn sleep-calls)))
-         (elapsed-seconds (/ (- (get-internal-real-time) started)
-                             internal-time-units-per-second)))
-    (expect (process-result-timed-out-p result) :to-be-truthy)
-    ;; The fake clock reports the deadline as already passed on the very
-    ;; first check, so SLEEP-FN is never invoked and no real waiting for
-    ;; TIMEOUT-SECONDS/GRACE-PERIOD-SECONDS happens.
-    (expect (= (car sleep-calls) 0) :to-be-truthy)
-    (expect (< elapsed-seconds 2) :to-be-truthy)))
+  (it "run reports a non-zero exit-code"
+    (let ((result (run "/bin/sh" (list "-c" "exit 3"))))
+      (expect (= (process-result-exit-code result) 3) :to-be-truthy)))
+
+  (cl-weave:it-property "run reports exactly the requested exit code, for any code in [0, 255]"
+      ((code (cl-weave:gen-integer :min 0 :max 255)))
+    (let ((result (run "/bin/sh" (list "-c" (format nil "exit ~D" code)))))
+      (expect (process-result-timed-out-p result) :to-be nil)
+      (expect (= (process-result-exit-code result) code) :to-be-truthy)
+      (expect (process-success-p result) :to-equal (zerop code))))
+
+  (it "run captures stderr separately from stdout"
+    (let ((result (run "/bin/sh" (list "-c" "echo out; echo err 1>&2"))))
+      (expect (string= (process-result-stdout result) (format nil "out~%")) :to-be-truthy)
+      (expect (string= (process-result-stderr result) (format nil "err~%")) :to-be-truthy)))
+
+  (it "run forwards a string INPUT to the child's standard input"
+    (let ((result (run "/bin/cat" nil :input "piped-in")))
+      (expect (string= (process-result-stdout result) "piped-in") :to-be-truthy)))
+
+  (it "run does not search PATH unless explicitly requested"
+    (signals error (run "echo" (list "hidden")))
+    (let ((result (run "echo" (list "visible") :search t)))
+      (expect (string= (process-result-stdout result) (format nil "visible~%")) :to-be-truthy)))
+
+  (it "preserves a searched executable symlink as argv zero"
+    (let* ((directory (merge-pathnames (format nil "cl-process-kit-~A/" (gensym)) (uiop:temporary-directory)))
+           (target (merge-pathnames "target-script" directory))
+           (alias (merge-pathnames "applet" directory)))
+      (unwind-protect
+           (progn
+             (ensure-directories-exist target)
+             (with-open-file (stream target :direction :output :if-exists :supersede)
+               (format stream "#!/bin/sh~%printf %s \"$0\"~%"))
+             (sb-posix:chmod (namestring target) #o755)
+             (sb-posix:symlink (namestring target) (namestring alias))
+             (let ((result (run "applet" nil
+                                :environment (list (format nil "PATH=~A" (namestring directory))) :search t)))
+               (expect (string= (process-result-stdout result) (namestring alias)) :to-be-truthy)))
+        (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
+
+  (it "run rejects inherited standard input because it cannot be isolated"
+    (signals error (run "/bin/cat" nil :input t)))
+
+  (it "run rejects a clock that does not implement the CL-BOUNDARY-KIT protocol"
+    (signals error (run "/bin/true" nil :clock :not-a-clock)))
+
+  (it "run rejects a sleeper that does not implement the CL-BOUNDARY-KIT protocol"
+    (signals error (run "/bin/true" nil :sleeper :not-a-sleeper)))
+
+  (it "run-shell executes a command through the shell"
+    (let ((result (run-shell "printf shell")))
+      (expect (string= (process-result-stdout result) "shell") :to-be-truthy)))
+
+  (it "run supports an unlimited drain deadline"
+    (let ((result (run "/bin/sh" (list "-c" "printf complete") :drain-timeout-seconds nil)))
+      (expect (string= (process-result-stdout result) "complete") :to-be-truthy)))
+
+  (it "run replaces the environment and directory"
+    (let* ((directory #P"/tmp/")
+           (result (run "/bin/sh"
+                        (list "-c" "printf '%s:%s:%s' \"$ONLY\" \"$PWD\" \"${HOME+inherited}\"")
+                        :environment (list "ONLY=yes" "PATH=/usr/bin:/bin")
+                        :directory directory))
+           (expected (format nil "yes:~A:" (string-right-trim "/" (namestring (truename directory))))))
+      (expect (string= (process-result-stdout result) expected) :to-be-truthy)))
+
+  (it "run can merge stderr into stdout"
+    (let ((result (run "/bin/sh" (list "-c" "printf out; printf err >&2") :error :output)))
+      (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
+      (expect (string= (process-result-stderr result) "") :to-be-truthy)))
+
+  (it "run/checked signals a typed error retaining the result"
+    (handler-case (run/checked "/bin/sh" (list "-c" "printf failed >&2; exit 7"))
+      (process-exit-error (condition)
+        (let ((result (process-exit-error-result condition)))
+          (expect (= (process-result-exit-code result) 7) :to-be-truthy)
+          (expect (string= (process-result-stderr result) "failed") :to-be-truthy))))))
+
+(describe "run timeout and signal escalation"
+  (it "run with on-timeout :return sets timed-out-p on a real timeout"
+    (let ((result (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :return)))
+      (expect (process-result-timed-out-p result) :to-be-truthy)))
+
+  (it "run with on-timeout :error signals process-timeout-error with the right slots"
+    (signals process-timeout-error
+      (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :error))
+    (handler-case
+        (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :error)
+      (process-timeout-error (e)
+        (expect (string= (process-timeout-error-command e) "/bin/sh") :to-be-truthy)
+        (expect (= (process-timeout-error-timeout e) 0.2) :to-be-truthy))))
+
+  (it "run escalates to SIGKILL when the child ignores SIGTERM"
+    (let ((result (run "/bin/sh" (list "-c" "trap '' TERM; sleep 5")
+                       :timeout 0.2 :grace-period 0.2 :on-timeout :return)))
+      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect (= (process-result-signal result) 9) :to-be-truthy)))
+
+  (it "run's polling loop honors an injected CLOCK/SLEEPER without consuming real time"
+    (let* ((sleep-calls (list 0))
+           (started (get-internal-real-time))
+           (result (run "/bin/sh" (list "-c" "sleep 5")
+                       :timeout 1 :grace-period 1 :on-timeout :return
+                       :clock (%make-jump-clock)
+                       :sleeper (%counting-sleeper sleep-calls)))
+           (elapsed-seconds (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+      (expect (process-result-timed-out-p result) :to-be-truthy)
+      ;; The fake clock reports the deadline as already passed on the very
+      ;; first check, so the sleeper is never invoked and no real waiting for
+      ;; TIMEOUT-SECONDS/GRACE-PERIOD-SECONDS happens.
+      (expect (= (car sleep-calls) 0) :to-be-truthy)
+      (expect (< elapsed-seconds 2) :to-be-truthy)))
+
+  (it "run times out a stopped child instead of waiting forever"
+    (let* ((started (get-internal-real-time))
+           (result (run "/bin/sh" (list "-c" "kill -STOP $$") :timeout 0.1 :grace-period 0.1 :on-timeout :return))
+           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect (< elapsed 2) :to-be-truthy)))
+
+  (it "run cleans up the child when CLOCK signals an error"
+    (let ((started (get-internal-real-time)))
+      (signals error
+        (run "/bin/sh" (list "-c" "sleep 5") :timeout 1
+             :clock (cl-boundary-kit:make-clock :monotonic-fn (lambda () (error "clock failed")))))
+      (expect (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 2) :to-be-truthy)))
+
+  (it "run rejects invalid timeout controls before spawning"
+    (signals error (run "/bin/true" nil :on-timeout :invalid))
+    (signals error (run "/bin/true" nil :poll-interval 0))
+    (signals error (run "/bin/true" nil :poll-interval -1))
+    (signals error (run "/bin/true" nil :timeout -1))
+    (signals error (run "/bin/true" nil :grace-period -1))
+    (signals error (run "/bin/true" nil :drain-timeout-seconds -1))
+    (signals error (run "/bin/true" nil :timeout-signal 0))
+    (signals error (run "/bin/true" nil :timeout-signal 999))
+    (signals error (run "/bin/true" nil :kill-signal 0))
+    (signals error (run "/bin/true" nil :kill-signal 999)))
+
+  (it "timeout errors retain a partial result without printing arguments"
+    (handler-case
+        (run "/bin/sh" (list "-c" "printf partial; sleep 5" "secret-argument")
+            :timeout 0.1 :grace-period 0.1 :on-timeout :error)
+      (process-timeout-error (condition)
+        (let ((result (process-timeout-error-result condition))
+              (report (princ-to-string condition)))
+          (expect (search "secret-argument" report) :to-be nil)
+          (expect (process-result-timed-out-p result) :to-be-truthy)
+          (expect (string= (process-result-stdout result) "partial") :to-be-truthy)))))
+
+  (it "run returns boundedly when an exited leader leaves a pipe-holding descendant"
+    (let* ((started (get-internal-real-time))
+           (result (run "/bin/sh" (list "-c" "sleep 5 & exit 0") :drain-timeout-seconds 0.1))
+           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+      (expect (= (process-result-exit-code result) 0) :to-be-truthy)
+      (expect (< elapsed 2) :to-be-truthy)))
+
+  (it "times out blocked large input and joins the stdin feeder"
+    (let* ((input (make-string (* 1024 1024) :initial-element #\x))
+           (started (get-internal-real-time))
+           (result (run "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
+                       :input input :timeout 0.1 :grace-period 0.1 :on-timeout :return))
+           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect (= (process-result-signal result) 9) :to-be-truthy)
+      (expect (< elapsed 2) :to-be-truthy))))
+
+(describe "run output capture and encoding"
+  (it "run caps both output streams without pipe deadlock"
+    (let ((result (run "/bin/sh"
+                       (list "-c" "i=0; while [ $i -lt 1000 ]; do printf x; printf y >&2; i=$((i+1)); done")
+                       :max-output-characters 32)))
+      (expect (= (length (process-result-stdout result)) 32) :to-be-truthy)
+      (expect (= (length (process-result-stderr result)) 32) :to-be-truthy)
+      (expect (process-result-stdout-truncated-p result) :to-be-truthy)
+      (expect (process-result-stderr-truncated-p result) :to-be-truthy)))
+
+  (it "run captures arbitrary bytes as octets"
+    (let ((result (run "/bin/sh" (list "-c" "printf '\\000\\200\\377'") :result-type :octets)))
+      (expect (equalp (process-result-stdout result)
+                      (make-array 3 :element-type '(unsigned-byte 8) :initial-contents '(0 128 255)))
+              :to-be-truthy)))
+
+  (it "writes octet input without character-stream re-encoding"
+    (let* ((input (make-array 4 :element-type '(unsigned-byte 8) :initial-contents '(0 127 128 255)))
+           (result (run "/bin/cat" nil :input input :result-type :octets)))
+      (expect (equalp (process-result-stdout result) input) :to-be-truthy)))
+
+  (it "run decodes UTF-8 after a multibyte sequence crosses a read boundary"
+    (let* ((prefix (make-string 4095 :initial-element (code-char 97)))
+           (expected (concatenate 'string prefix (string (code-char #xE9))))
+           (result (run "/bin/sh"
+                        (list "-c" "i=0; while [ $i -lt 4095 ]; do printf a; i=$((i+1)); done; printf '\\303\\251'")
+                        :external-format :utf-8)))
+      (expect (string= (process-result-stdout result) expected) :to-be-truthy)))
+
+  (it "limits UTF-8 output by complete characters"
+    (dolist (entry '(("\\303\\251x" . #xE9) ("\\342\\230\\203x" . #x2603) ("\\360\\237\\230\\200x" . #x1F600)))
+      (let ((result (run "/bin/sh" (list "-c" (format nil "printf '~A'" (car entry)))
+                         :external-format :utf-8 :max-output-characters 1)))
+        (expect (string= (process-result-stdout result) (string (code-char (cdr entry)))) :to-be-truthy)
+        (expect (process-result-stdout-truncated-p result) :to-be-truthy))))
+
+  (it "run encodes string input at the API boundary"
+    (let* ((input (concatenate 'string "snowman " (string (code-char #x2603))))
+           (result (run "/bin/cat" nil :input input :external-format :utf-8)))
+      (expect (string= (process-result-stdout result) input) :to-be-truthy)))
+
+  (it "run signals process-io-error for invalid UTF-8 when decoding-error-policy is :error"
+    (signals process-io-error
+      (run "/bin/sh" (list "-c" "printf '\\377'")
+           :external-format :utf-8 :decoding-error-policy :error))))
+
+(describe "cancellation"
+  (it "does not cancel an already cached process result"
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf stable") :input :stream :output :stream :error :stream))
+      (let* ((first (communicate process))
+             (token (make-cancellation-token)))
+        (cancel token)
+        (let ((second (communicate process :cancellation-token token :on-cancel :return)))
+          (expect (eq second first) :to-be-truthy)
+          (expect (process-result-cancelled-p second) :to-be nil)
+          (expect (cancellation-requested-p token) :to-be-truthy)))))
+
+  (it "cancels a pipe-holding descendant after its leader exits"
+    (let* ((token (make-cancellation-token))
+           (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test"))
+           (started (get-internal-real-time))
+           (result (run "/bin/sh" (list "-c" "(trap \"\" TERM; sleep 5) & printf leader")
+                        :cancellation-token token :grace-period 0.1d0 :on-cancel :return))
+           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+      (sb-thread:join-thread canceller)
+      (expect (process-result-cancelled-p result) :to-be-truthy)
+      (expect (string= (process-result-stdout result) "leader") :to-be-truthy)
+      (expect (< elapsed 2) :to-be-truthy))))
