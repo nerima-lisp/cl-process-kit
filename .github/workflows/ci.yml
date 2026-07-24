@@ -24,4 +24,9 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Check flake
-        run: nix flake check --print-build-logs
+        # --max-jobs 1: checkout-tests and pty-tests both spawn real
+        # subprocesses and drain their output on background threads with
+        # tight timeouts; building them concurrently on a shared runner
+        # starves those threads of CPU and makes the drain-timeout fallback
+        # path flake under contention that a quieter host doesn't hit.
+        run: nix flake check --print-build-logs --max-jobs 1
