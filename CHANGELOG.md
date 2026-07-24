@@ -24,9 +24,35 @@ compatibility surface to preserve.
   to interrupt a blocked read; tracked for a future release. The
   regression test for this case is skipped on Linux
   (`t/run-test.lisp`) rather than flaking CI red on every run.
+- Several more process-group/communicate tests are Linux-only flaky for the
+  same underlying reason -- timing around signal delivery, process-group
+  reaping, and blocked-read interruption is not guaranteed identical to
+  macOS/BSD: `communicate result caching > rejects a concurrent communicate
+  while capture is in progress`; `process-group termination > kills
+  descendants after the process-group leader exits on TERM`, `> does not
+  publicly signal a group after its leader is terminal`, `> provides
+  distinct leader and group signal operations`, `> close-process cleans
+  descendants more than five seconds after their leader exits`
+  (`t/spawn-test.lisp`); and `communicate-async events > communicate-async
+  reports overflow without losing the terminal event`, `> cancels blocked
+  asynchronous output without failing the task` (`t/async-task-test.lisp`).
+  All are skipped on Linux for the same reason and tracked alongside the
+  drain-timeout issue above for a future release.
 
 ### Added
 
+- `run` (and `run/checked`, `run-shell`) gained an `:output` policy alongside
+  the existing `:error` one, and both now accept `:inherit` or a stream in
+  addition to `:capture` (and, for `:error`, `:output`). `:capture` collects the
+  fd into the `process-result` as before (still the default, so existing callers
+  are unaffected); `:inherit` lets the child write straight to this process's own
+  descriptor for live, uncaptured output; and a stream sends it there. This lets
+  a caller run a foreground command with output flowing live to the terminal (or
+  a log file) while still getting `run`'s timeout and whole-process-group
+  SIGTERM→SIGKILL escalation — the "stream it, don't buffer it" case that
+  previously forced callers back onto raw `spawn`/`communicate`. The
+  command-spec path (`make-command`/`run-command`) already accepted inherited and
+  stream stdio; this brings the program-and-args `run` path to parity.
 - `command-spec`/`make-command`: validated, defensively-copied command
   construction (`:search`, `:environment-policy`, `:environment-update`,
   `:directory`, `:stdin`/`:stdout`/`:stderr`, `:result-type`,
