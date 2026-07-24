@@ -7,9 +7,26 @@
 
 (in-package #:process-kit)
 
+(defun %valid-run-output-policy-p (policy)
+  "A RUN OUTPUT policy names how a child fd is wired: :CAPTURE collects it into
+the PROCESS-RESULT, :INHERIT lets the child write straight to this process's own
+fd (live and uncaptured), and a STREAM sends it there. ERROR additionally
+accepts :OUTPUT, merging stderr into wherever stdout goes."
+  (or (member policy '(:capture :inherit) :test #'eq) (streamp policy)))
+
+(defun %run-fd-target (policy)
+  "Translate a RUN OUTPUT/ERROR POLICY into the fd target SPAWN passes to
+RUN-PROGRAM: :STREAM to capture, T to inherit, or the policy itself for a stream
+or the :OUTPUT (merge-into-stdout) marker."
+  (case policy
+    (:capture :stream)
+    (:inherit t)
+    (t policy)))
+
 (defun %run-base
     (command arguments
      &key (search nil) input environment directory
+       (output :capture)
        ((:error error-policy) :capture)
        timeout (grace-period 1.0d0)
        (poll-interval +default-poll-interval+) (timeout-signal 15) (kill-signal 9) (on-timeout :error)
@@ -20,11 +37,15 @@
            "COMMAND must be a non-empty string or pathname.")
   (%ensure (and (listp arguments) (every #'stringp arguments))
            "ARGUMENTS must be a proper list of strings.")
-  (%ensure (member error-policy '(:capture :output) :test #'eq) "ERROR must be :CAPTURE or :OUTPUT.")
+  (%ensure (%valid-run-output-policy-p output)
+           "OUTPUT must be :CAPTURE, :INHERIT, or a stream.")
+  (%ensure (or (%valid-run-output-policy-p error-policy) (eq error-policy :output))
+           "ERROR must be :CAPTURE, :OUTPUT, :INHERIT, or a stream.")
   (let* ((effective-environment (or environment (copy-list (sb-ext:posix-environ))))
          (process (spawn command arguments
-                          :search search :input (and input :stream) :output :stream
-                          :error (if (eq error-policy :output) :output :stream)
+                          :search search :input (and input :stream)
+                          :output (%run-fd-target output)
+                          :error (%run-fd-target error-policy)
                           :environment effective-environment :directory directory
                           :external-format :latin-1)))
     (unwind-protect

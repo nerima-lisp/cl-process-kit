@@ -140,6 +140,34 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
       (expect (string= (process-result-stderr result) "") :to-be-truthy)))
 
+  (it "run with :output :inherit leaves stdout to the parent fd rather than capturing"
+    ;; The child's stdout goes straight to this process's fd (nothing to assert
+    ;; on that here); RUN still enforces the timeout and reports the exit code,
+    ;; and the captured stdout is empty because nothing was drained.
+    (let ((result (run "/bin/sh" (list "-c" "printf ignored; exit 0")
+                       :output :inherit :error :inherit)))
+      (expect (string= (process-result-stdout result) "") :to-be-truthy)
+      (expect (string= (process-result-stderr result) "") :to-be-truthy)
+      (expect (zerop (process-result-exit-code result)) :to-be-truthy)))
+
+  (it "run with :error :inherit still captures stdout but not stderr"
+    (let ((result (run "/bin/sh" (list "-c" "printf out; printf err >&2")
+                       :output :capture :error :inherit)))
+      (expect (string= (process-result-stdout result) "out") :to-be-truthy)
+      (expect (string= (process-result-stderr result) "") :to-be-truthy)))
+
+  (it "run sends stdout to a caller-provided stream instead of capturing it"
+    (uiop:with-temporary-file (:pathname path)
+      (with-open-file (stream path :direction :output :if-exists :supersede)
+        (let ((result (run "/bin/sh" (list "-c" "printf streamed") :output stream)))
+          (expect (string= (process-result-stdout result) "") :to-be-truthy)
+          (expect (zerop (process-result-exit-code result)) :to-be-truthy)))
+      (expect (string= (uiop:read-file-string path) "streamed") :to-be-truthy)))
+
+  (it "run rejects an unknown :output policy before spawning"
+    (expect (lambda () (run "/bin/sh" (list "-c" "true") :output :bogus))
+            :to-throw 'error))
+
   (it "run/checked signals a typed error retaining the result"
     (handler-case (run/checked "/bin/sh" (list "-c" "printf failed >&2; exit 7"))
       (process-exit-error (condition)
@@ -229,8 +257,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
   ;; CHANGELOG.md); skip rather than flake red on every Linux CI run until
   ;; the copier read loop is redesigned around non-blocking I/O.
   #+linux
-  (it-skip "run returns boundedly when an exited leader leaves a pipe-holding descendant"
-           "known limitation: close() does not interrupt a concurrent blocking read on Linux")
+  (cl-weave:it-skip "run returns boundedly when an exited leader leaves a pipe-holding descendant"
+                    "known limitation: close() does not interrupt a concurrent blocking read on Linux")
   #-linux
   (it "run returns boundedly when an exited leader leaves a pipe-holding descendant"
     (let* ((started (get-internal-real-time))
