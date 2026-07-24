@@ -4,6 +4,9 @@
 *.fas
 *.lib
 
+# SBCL coverage report data
+coverage.dat
+
 # Nix build outputs
 /result
 /result-*

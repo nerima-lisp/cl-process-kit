@@ -1,0 +1,43 @@
+;;;; src/parameters.lisp
+;;;;
+;;;; Tunable defaults shared by capture, communicate, and pipeline logic, plus
+;;;; the CL-BOUNDARY-KIT clock/sleeper boundary objects RUN, COMMUNICATE, and
+;;;; PROCESS-WAIT accept in place of raw clock/sleep functions -- a real
+;;;; clock/sleeper by default, swappable for a deterministic fake in tests.
+;;;; Kept as plain data, separate from the logic that consumes it.
+
+(in-package #:process-kit)
+
+(defparameter +default-poll-interval+ 0.01d0
+  "Default interval, in seconds, between deadline/liveness polls.")
+
+(defparameter +default-output-limit+ 1048576
+  "Default MAX-OUTPUT-CHARACTERS: 1 MiB of captured output per stream.")
+
+(defparameter +default-drain-timeout-seconds+ 1.0d0
+  "Default deadline for draining copier/feeder threads during cleanup.")
+
+(defun %monotonic-seconds ()
+  "The real monotonic clock, in seconds, used as +DEFAULT-CLOCK+'s reading."
+  (/ (get-internal-real-time) internal-time-units-per-second))
+
+(defparameter +default-clock+
+  (cl-boundary-kit:make-clock :monotonic-fn #'%monotonic-seconds)
+  "The real clock boundary: CLOCK-MONOTONIC reads seconds off the system's
+monotonic clock. Tests substitute CL-BOUNDARY-KIT:MAKE-FAKE-CLOCK instead.")
+
+(defparameter +default-sleeper+ (cl-boundary-kit:make-sleeper)
+  "The real sleeper boundary: SLEEPER-SLEEP blocks the calling thread via
+CL:SLEEP. Tests substitute CL-BOUNDARY-KIT:MAKE-TEST-SLEEPER instead.")
+
+(defun %protocol-object-p (generic-function sample-arguments)
+  "True when SAMPLE-ARGUMENTS -- a full, arity-matching call shape for
+GENERIC-FUNCTION with the candidate boundary object first -- has an
+applicable method. A duck-typed conformance check for CL-BOUNDARY-KIT
+boundary protocols, whose concrete classes (CLOCK, SLEEPER, ...) are
+deliberately not exported."
+  (and (typep (first sample-arguments) 'standard-object)
+       (not (null (compute-applicable-methods generic-function sample-arguments)))))
+
+(defun %clock-p (value) (%protocol-object-p #'cl-boundary-kit:clock-monotonic (list value)))
+(defun %sleeper-p (value) (%protocol-object-p #'cl-boundary-kit:sleeper-sleep (list value 0)))
