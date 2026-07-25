@@ -14,17 +14,14 @@
     (or (sb-ext:posix-getenv "CL_PROCESS_KIT_SPAWN")
         "cl-process-kit-spawn"))
 
+  (defparameter +native-spawn-phases+
+    (list (cons 1 :argument) (cons 2 :fd-setup) (cons 3 :chdir) (cons 4 :session)
+          (cons 5 :process-group) (cons 6 :credentials) (cons 7 :resource-limit) (cons 8 :exec))
+    "Maps the native spawn trampoline's (native/spawn.c) phase byte codes to
+the keyword PROCESS-KIT reports a NATIVE-PROCESS-LAUNCH-ERROR failed during.")
+
   (defun %native-spawn-phase (number)
-    (case number
-      (1 :argument)
-      (2 :fd-setup)
-      (3 :chdir)
-      (4 :session)
-      (5 :process-group)
-      (6 :credentials)
-      (7 :resource-limit)
-      (8 :exec)
-      (otherwise :unknown)))
+    (or (cdr (assoc number +native-spawn-phases+)) :unknown))
 
   (defun %native-uint32 (octets offset)
     (logior (aref octets offset)

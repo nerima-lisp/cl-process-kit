@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Correctness
+
+- `src/copier.lisp`'s `%join-copier` accepted an `&optional timeout` and, if
+  omitted, joined a copier thread with no bound at all -- an unbounded wait
+  on a thread that can be blocked reading a live (possibly-hung) child
+  process's stdout/stderr. Audited every `SB-THREAD:JOIN-THREAD`/
+  `PROCESS-WAIT`/`SB-EXT:PROCESS-WAIT` call in `src/` for this same class of
+  risk: the other four unbounded `PROCESS-WAIT` calls (`communicate.lisp`,
+  `native-spawn.lisp`, `process-handle.lisp`, `spawn.lisp`) are each
+  provably safe by construction -- reached only after the process has
+  already been SIGKILLed (which POSIX guarantees terminates it) or is
+  already OS-reported as terminal, so the wait there reaps a dying/dead
+  process rather than blocking on a live one. `%join-copier` was the one
+  genuine gap. Made `timeout` a required parameter (it was never actually
+  called without one -- the unbounded branch was dead in practice, not just
+  in principle) and updated its docstring to state the "never unbounded"
+  contract explicitly.
+
+### Data/logic separation
+
+- `src/native-spawn.lisp`'s `%native-spawn-phase` mapped the native spawn
+  trampoline's byte phase codes to keywords with a `case` form embedded
+  directly in the lookup function. Hoisted the mapping into a top-level
+  `+native-spawn-phases+` alist, leaving `%native-spawn-phase` as a plain
+  `(or (cdr (assoc number +native-spawn-phases+)) :unknown)` traversal --
+  the phase table can now be read, diffed, or extended on its own, separate
+  from the lookup logic that applies it, matching the pattern already used
+  elsewhere in `src/` (e.g. `+task-terminal-state-rules+`).
+
 ### Readability
 
 - `src/communicate.lisp`: `communicate`'s cancellation watcher body -- a

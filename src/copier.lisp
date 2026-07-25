@@ -69,13 +69,15 @@ copier threads and the asynchronous event queue.")
              :name (format nil "process-kit ~A copier" stream-name)))
       copier)))
 
-(defun %join-copier (copier &optional timeout)
+(defun %join-copier (copier timeout)
+  "Join COPIER's thread, bounded by TIMEOUT (a non-negative real number of
+seconds -- never unbounded, since a copier thread can be blocked on a real,
+possibly-hung child process). Returns :TIMED-OUT if TIMEOUT elapses (or is
+non-positive) before the thread finishes."
   (when copier
-    (cond
-      ((null timeout) (sb-thread:join-thread (%copier-thread copier)))
-      ((plusp timeout)
-       (sb-thread:join-thread (%copier-thread copier) :timeout timeout :default :timed-out))
-      (t :timed-out))))
+    (if (plusp timeout)
+        (sb-thread:join-thread (%copier-thread copier) :timeout timeout :default :timed-out)
+        :timed-out)))
 
 (defun %close-stream-for-copier (stream copier)
   (when copier (setf (%copier-forced-close-p copier) t))
