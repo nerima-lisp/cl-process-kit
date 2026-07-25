@@ -68,6 +68,19 @@
              (expect (= 1 (count :terminal (process-events task) :key (function process-event-kind))) :to-be-truthy))
         (sb-thread:join-thread canceller))))
 
+  (it "rejects an unknown event overflow policy before touching the process"
+    (with-process (process (spawn "true" nil :search t :environment (sb-ext:posix-environ)))
+      (signals error (communicate-async process :event-overflow-policy :bogus))))
+
+  (it "await-process re-signals a condition captured by the async worker"
+    (with-mocked-functions
+        (((symbol-function 'process-kit::%capture-append)
+          (lambda (&rest _) (declare (ignore _)) (error "injected async copier fault"))))
+      (let* ((process (spawn "/bin/sh" (list "-c" "printf payload") :output :stream :error :stream))
+             (task (communicate-async process)))
+        (signals process-io-error (await-process task))
+        (expect (task-state task) :to-be :failed))))
+
   (it "keeps async histories bounded at capacities zero and one under huge output"
     (loop for capacity in (list 0 1)
           do (let* ((process (spawn "/bin/sh" (list "-c" "yes x | head -c 1000000") :output :stream :error :stream))
@@ -170,4 +183,23 @@
     (let* ((process (spawn "/bin/sh" (list "-c" "printf ok") :output :stream :error :stream))
            (task (communicate-async process :result-type :octets))
            (awaited (await-process task)))
-      (expect (eq (task-result task) awaited) :to-be-truthy))))
+      (expect (eq (task-result task) awaited) :to-be-truthy)))
+
+  (it "next-process-event returns :timeout when no event arrives before the deadline"
+    (let* ((process (%spawn-sleeping "1"))
+           (task (communicate-async process)))
+      (multiple-value-bind (event next-cursor status gap-count) (next-process-event task :timeout 0.01d0)
+        (declare (ignore next-cursor gap-count))
+        (expect event :to-be-null)
+        (expect status :to-be :timeout))
+      (cancel-process task)
+      (await-process task)))
+
+  (it "await-process returns NIL when its own timeout expires while the task is still running"
+    (let* ((process (%spawn-sleeping "1"))
+           (task (communicate-async process)))
+      (multiple-value-bind (result reached-terminal-p) (await-process task :timeout 0.01d0)
+        (expect result :to-be-null)
+        (expect reached-terminal-p :to-be-null))
+      (cancel-process task)
+      (await-process task))))

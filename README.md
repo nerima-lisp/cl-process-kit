@@ -169,8 +169,15 @@ type.
 - `run (command arguments &key search input environment directory
   error timeout grace-period poll-interval timeout-signal kill-signal
   on-timeout max-output-characters drain-timeout-seconds result-type
-  external-format clock sleeper cancellation-token on-cancel)`
-  -> `process-result`
+  external-format clock sleeper cancellation-token on-cancel fd-limit)`
+  -> `process-result`. `fd-limit`, if given, temporarily lowers this
+  process's own `RLIMIT_NOFILE` soft limit around the spawn (restored
+  immediately afterward) -- the spawned child inherits the lower limit
+  through `exec`. On hosts with a very large ambient file-descriptor limit
+  (routine under Nix/direnv shells), this measurably cuts spawn latency: the
+  forked child otherwise closes every inherited descriptor up to that limit
+  one syscall at a time. `NIL` (the default) leaves the ambient limit
+  untouched.
 - `run/checked (command arguments &rest options)` -> `process-result`.
   Accepts the same options as `run`. It signals `process-cancelled-error` for
   a returned cancelled result and `process-exit-error` for any other
@@ -220,7 +227,8 @@ passed directly without shell interpolation. `run-shell` invokes
 ### Asynchronous execution
 
 - `spawn (command arguments &key search input output error environment
-  directory external-format status-hook preserve-fds)` -> `process-handle`
+  directory external-format status-hook preserve-fds fd-limit)` ->
+  `process-handle`
 - `spawn-command (command-spec &key stdin stdout stderr)` -> `process-handle`
 - `communicate (process &key input timeout grace-period timeout-signal
   kill-signal on-timeout max-output-characters drain-timeout-seconds

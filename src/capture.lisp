@@ -19,15 +19,26 @@
   (count 0 :type integer)
   (truncated-p nil :type boolean))
 
-(defun %capture-append-decoded (capture decoded)
+(defun %capture-accept-bounded (capture available push)
+  "Accept as much of an AVAILABLE-length chunk as CAPTURE's limit still has
+room for: call the continuation PUSH with the accepted count if that's
+positive, advance CAPTURE's running COUNT by it, and mark CAPTURE truncated
+if fewer than AVAILABLE were accepted. Shared by %CAPTURE-APPEND-DECODED
+(string mode) and %CAPTURE-APPEND's octets branch, which differ only in
+what a chunk IS -- a decoded string or a raw octet buffer -- not in this
+accept/truncate accounting."
   (let* ((limit (%capture-limit capture))
          (remaining (and limit (max 0 (- limit (%capture-count capture)))))
-         (accepted (if remaining (min (length decoded) remaining) (length decoded))))
+         (accepted (if remaining (min available remaining) available)))
     (when (plusp accepted)
-      (push (subseq decoded 0 accepted) (%capture-data capture))
+      (funcall push accepted)
       (incf (%capture-count capture) accepted))
-    (when (< accepted (length decoded))
-      (setf (%capture-truncated-p capture) t))))
+    (when (< accepted available) (setf (%capture-truncated-p capture) t))))
+
+(defun %capture-append-decoded (capture decoded)
+  (%capture-accept-bounded
+   capture (length decoded)
+   (lambda (accepted) (push (subseq decoded 0 accepted) (%capture-data capture)))))
 
 (defun %utf8-external-format-p (external-format)
   (let ((name (if (consp external-format) (first external-format) external-format)))
@@ -86,13 +97,9 @@
 
 (defun %capture-append (capture buffer count)
   (if (eq (%capture-result-type capture) :octets)
-      (let* ((limit (%capture-limit capture))
-             (remaining (and limit (max 0 (- limit (%capture-count capture)))))
-             (accepted (if remaining (min count remaining) count)))
-        (when (plusp accepted)
-          (push (subseq buffer 0 accepted) (%capture-data capture))
-          (incf (%capture-count capture) accepted))
-        (when (< accepted count) (setf (%capture-truncated-p capture) t)))
+      (%capture-accept-bounded
+       capture count
+       (lambda (accepted) (push (subseq buffer 0 accepted) (%capture-data capture))))
       (cond
         ((and (%capture-limit capture) (>= (%capture-count capture) (%capture-limit capture)))
          (when (plusp count) (setf (%capture-truncated-p capture) t)))

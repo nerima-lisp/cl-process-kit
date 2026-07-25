@@ -83,7 +83,9 @@
                (expect (if (eq expected-kind :timeout)
                            (and (process-result-timed-out-p stage-result) (pipeline-result-timed-out-p pipeline-result))
                            (and (process-result-cancelled-p stage-result) (pipeline-result-cancelled-p pipeline-result)))
-                       :to-be-truthy))))
+                       :to-be-truthy)
+               (expect (process-success-p stage-result) :to-be nil)
+               (expect (pipeline-success-p pipeline-result) :to-be nil))))
       (handler-case
           (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "cat" nil :search t))
                         :timeout 0.1d0 :grace-period 0.1d0 :on-timeout :error)

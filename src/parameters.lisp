@@ -17,6 +17,14 @@
 (defparameter +default-drain-timeout-seconds+ 1.0d0
   "Default deadline for draining copier/feeder threads during cleanup.")
 
+(defparameter +default-copy-buffer-size+ 65536
+  "Size, in octets/characters, of each COPIER/FEEDER read-write chunk. Larger
+than a single 4 KiB page: fewer, larger READ(2)/WRITE(2) calls per byte
+transferred, which SB-SPROF confirms dominates large-transfer wall time
+(measured well above the fork/thread-creation cost RUN otherwise pays per
+call). Still small enough that one chunk's ENCODING/EMIT work stays a bounded,
+short critical section.")
+
 (defun %monotonic-seconds ()
   "The real monotonic clock, in seconds, used as +DEFAULT-CLOCK+'s reading."
   (/ (get-internal-real-time) internal-time-units-per-second))

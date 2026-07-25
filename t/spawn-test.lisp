@@ -165,6 +165,10 @@
       (close-process process :timeout 0.1)
       (expect (process-kit::%process-group-alive-p process) :to-be nil)))
 
+  (it "communicate signals process-timeout-error on its default :on-timeout :error"
+    (with-process (process (%spawn-sleeping))
+      (signals process-timeout-error (communicate process :timeout 0.1d0 :grace-period 0.1d0))))
+
   #+linux
   (cl-weave:it-skip "does not publicly signal a group after its leader is terminal"
                     "known limitation: process-group/communicate timing is not guaranteed identical on Linux (see CHANGELOG)")
@@ -227,6 +231,29 @@
     (signals error (make-command "/bin/true" nil :environment-update (list (cons "A=B" "value"))))
     (signals error (make-command "/bin/true" nil :environment-update (list (cons "A" "1") (cons "A" "2"))))))
 
+(describe "spawn :fd-limit"
+  (it "rejects a non-positive or non-integer fd-limit"
+    (signals error (spawn "true" nil :search t :fd-limit 0))
+    (signals error (spawn "true" nil :search t :fd-limit -1))
+    (signals error (spawn "true" nil :search t :fd-limit 1.5)))
+
+  (it "lowers the child's inherited RLIMIT_NOFILE without changing this process's own limit"
+    (multiple-value-bind (before-soft before-hard) (process-kit::%get-nofile-limit)
+      (let ((result (run "sh" (list "-c" "ulimit -n") :search t :fd-limit 1024)))
+        (expect (string= (string-trim '(#\Newline) (process-result-stdout result)) "1024") :to-be-truthy))
+      (multiple-value-bind (after-soft after-hard) (process-kit::%get-nofile-limit)
+        (expect (= before-soft after-soft) :to-be-truthy)
+        (expect (= before-hard after-hard) :to-be-truthy))))
+
+  (it "restores this process's own fd limit even when the spawn itself fails"
+    (multiple-value-bind (before-soft before-hard) (process-kit::%get-nofile-limit)
+      (signals process-launch-error
+        (spawn "definitely-not-a-cl-process-kit-program" nil :search t
+               :environment (list "PATH=/bin") :fd-limit 1024))
+      (multiple-value-bind (after-soft after-hard) (process-kit::%get-nofile-limit)
+        (expect (= before-soft after-soft) :to-be-truthy)
+        (expect (= before-hard after-hard) :to-be-truthy)))))
+
 (describe "executable resolution"
   (it "resolves searched programs from the effective PATH"
     (dolist (case (list (list '("PATH=/bin") nil)
@@ -242,4 +269,8 @@
     (signals process-launch-error
       (spawn "definitely-not-a-cl-process-kit-program" nil :search t :environment (list "PATH=/bin")))
     (signals process-launch-error
-      (spawn "hosts" nil :search t :environment (list "PATH=/etc")))))
+      (spawn "hosts" nil :search t :environment (list "PATH=/etc"))))
+
+  (it "rejects a directory that shadows a searched program name"
+    (signals process-launch-error
+      (spawn "etc" nil :search t :environment (list "PATH=/")))))

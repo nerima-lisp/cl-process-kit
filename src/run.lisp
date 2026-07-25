@@ -32,7 +32,7 @@ or the :OUTPUT (merge-into-stdout) marker."
        (poll-interval +default-poll-interval+) (timeout-signal 15) (kill-signal 9) (on-timeout :error)
        (max-output-characters +default-output-limit+) (drain-timeout-seconds +default-drain-timeout-seconds+)
        (result-type :string) (external-format :default) (decoding-error-policy :replace)
-       (clock +default-clock+) (sleeper +default-sleeper+))
+       (clock +default-clock+) (sleeper +default-sleeper+) fd-limit)
   (%ensure (and (or (stringp command) (pathnamep command)) (plusp (length (namestring command))))
            "COMMAND must be a non-empty string or pathname.")
   (%ensure (and (listp arguments) (every #'stringp arguments))
@@ -47,7 +47,7 @@ or the :OUTPUT (merge-into-stdout) marker."
                           :output (%run-fd-target output)
                           :error (%run-fd-target error-policy)
                           :environment effective-environment :directory directory
-                          :external-format :latin-1)))
+                          :external-format :latin-1 :fd-limit fd-limit)))
     (unwind-protect
          (let ((result (communicate process :input input :timeout timeout
                                              :grace-period grace-period :poll-interval poll-interval

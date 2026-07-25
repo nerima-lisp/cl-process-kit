@@ -9,6 +9,35 @@ into a full process execution toolkit on top of `cl-boundary-kit` and
 `cl-log-kit`; nothing prior to this was ever tagged, so there is no
 compatibility surface to preserve.
 
+### Dependencies
+
+- Bumped `cl-weave` v0.10.0 -> v0.11.0, `cl-boundary-kit` v0.4.0 -> v0.5.0,
+  `cl-tty-kit` v0.4.0 -> v0.5.0 (`cl-log-kit` was already at latest,
+  v1.1.0). Verified with a full `nix flake check` (both `checkout-tests`
+  and `pty-tests`), not just a local `sbcl --script` run.
+- Fixed `t/native-spawn-test.sh`'s Darwin file-mode check, which had never
+  actually passed under `nix flake check` on macOS: a Nix sandbox's `PATH`
+  puts GNU coreutils' `stat` ahead of the system's, and GNU `stat -f`
+  means "show filesystem status" (a different, incompatible option from
+  BSD `stat -f FORMAT`), so `stat -f %Lp` silently invoked the wrong
+  implementation and failed. Now calls `/usr/bin/stat` explicitly on that
+  branch. Confirmed pre-existing (reproduced against the previously
+  committed `flake.lock`, unrelated to the dependency bump above) via a
+  clean `nix flake check` run before any other change in this session.
+
+### Performance
+
+- `spawn`/`run` accept a new `:fd-limit` option. `SB-EXT:RUN-PROGRAM`'s
+  forked child closes every inherited file descriptor up to its
+  `RLIMIT_NOFILE` one syscall at a time on Darwin; on a host with a very
+  large ambient limit (routine under Nix/direnv shells), that is a
+  measurable fraction of per-call latency. `:fd-limit` temporarily lowers
+  this process's own soft limit around the spawn (restored immediately
+  afterward, regardless of success or failure) so the child inherits a
+  smaller one instead. Opt-in and `NIL` by default: the lowered limit is
+  inherited by the child through `exec` and persists for its lifetime, so
+  this is a caller decision, not a silent default.
+
 ### Known Limitations
 
 - On Linux, when a spawned process exits but leaves a backgrounded

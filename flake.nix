@@ -5,11 +5,11 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v0.10.0";
+      url = "github:nerima-lisp/cl-weave/v0.11.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cl-boundary-kit = {
-      url = "github:nerima-lisp/cl-boundary-kit/v0.4.0";
+      url = "github:nerima-lisp/cl-boundary-kit/v0.5.0";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cl-log-kit = {
@@ -17,7 +17,7 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     cl-tty-kit = {
-      url = "github:nerima-lisp/cl-tty-kit/v0.4.0";
+      url = "github:nerima-lisp/cl-tty-kit/v0.5.0";
       flake = false;
     };
   };
@@ -47,7 +47,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           clBoundaryKit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-boundary-kit";
-            version = "0.4.0";
+            version = "0.5.0";
             src = cl-boundary-kit;
             systems = [ "cl-boundary-kit" ];
           };
@@ -106,6 +106,15 @@
               {
                 nativeBuildInputs = [ pkgs.sbcl pkgs.stdenv.cc pkgs.perl pkgs.coreutils ];
                 CL_SOURCE_REGISTRY = sourceRegistry;
+                # Coverage is a ratchet, not a one-off report: run-tests.lisp
+                # fails the build itself if src/ coverage regresses below the
+                # +minimum-*-coverage+ floors it tracks, so CI is the
+                # enforcement point, not just a local opt-in convenience.
+                # CL_PROCESS_KIT_COVERAGE_DAT redirects coverage.dat away from
+                # $self (the read-only Nix store path run-tests.lisp itself
+                # lives under) into this derivation's writable build sandbox.
+                CL_PROCESS_KIT_COVERAGE = "1";
+                CL_PROCESS_KIT_COVERAGE_DAT = "coverage.dat";
               }
               ''
                 export HOME="$TMPDIR/home"

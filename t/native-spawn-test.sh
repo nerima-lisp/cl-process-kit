@@ -65,7 +65,11 @@ wait "$session_child"
 
 "$trampoline" --error-fd 2 --umask 077 -- "$touch_bin" "$temporary/masked"
 case $(uname -s) in
-  Darwin) mode=$(stat -f %Lp "$temporary/masked") ;;
+  # /usr/bin/stat explicitly: a Nix sandbox's PATH puts GNU coreutils'
+  # stat (a different -f meaning: "show filesystem status", not "format
+  # string") ahead of the system's, so the unqualified `stat` binds to
+  # the wrong implementation here even though this branch is Darwin-only.
+  Darwin) mode=$(/usr/bin/stat -f %Lp "$temporary/masked") ;;
   *) mode=$(stat -c %a "$temporary/masked") ;;
 esac
 test "$mode" = 600

@@ -16,10 +16,26 @@
 ;;;; instead of a literal SB-COVER:... token, which the reader would
 ;;;; otherwise have to resolve before that require ever runs.
 ;;;;
+;;;; Literal 100% coverage is not attainable here: SB-COVER only instruments
+;;;; RUNTIME execution, but DEFMACRO/DEFSTRUCT/DEFPARAMETER bodies run once
+;;;; at macro-expansion or load time -- exercising every call site of a
+;;;; macro still leaves its *definition* reading as "not executed". Since
+;;;; this library pushes validation and accessors through DEFMACRO
+;;;; wherever possible, the honest, sustainable form of "aim for 100%" is a
+;;;; ratchet: +MINIMUM-*-COVERAGE+ below fail the run if coverage regresses
+;;;; below the best level so far reached, so it only ever climbs. Bump
+;;;; these constants up (never down) whenever a change legitimately raises
+;;;; coverage; a drop means a genuinely-reachable branch lost its test.
+;;;;
 ;;;; Usage: sbcl --script run-tests.lisp
 ;;;;        CL_PROCESS_KIT_COVERAGE=1 sbcl --script run-tests.lisp
 
 (require :asdf)
+
+(defparameter +minimum-expression-coverage+ 87.0
+  "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
+(defparameter +minimum-branch-coverage+ 79.5
+  "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()
   (make-pathname :name nil
@@ -37,17 +53,34 @@
 (defun coverage-percentage (covered total)
   (if (zerop total) 100.0 (* 100.0 (/ covered total))))
 
+(defun check-coverage-floor (kind actual minimum)
+  (when (< actual minimum)
+    (format *error-output* "~&Coverage regression: ~A ~,1F% is below the ~,1F% floor.~%" kind actual minimum)
+    (uiop:quit 1)))
+
+(defun coverage-data-path (root)
+  "Where to write coverage.dat: ROOT-relative for a normal checkout, but
+CL_PROCESS_KIT_COVERAGE_DAT overrides that when ROOT isn't writable -- e.g.
+`nix flake check`'s checkout-tests derivation runs this script straight out
+of the read-only Nix store and must redirect it into its build sandbox."
+  (let ((override (uiop:getenv "CL_PROCESS_KIT_COVERAGE_DAT")))
+    (if (and override (plusp (length override))) (pathname override) (merge-pathnames "coverage.dat" root))))
+
 (defun print-coverage-report (root)
   (let* ((statistics (funcall (cl-weave-symbol "COVERAGE-STATISTICS")
                               :include-pathnames (list (merge-pathnames "src/" root))))
          (expression-covered (getf statistics :expression-covered))
          (expression-total (getf statistics :expression-total))
          (branch-covered (getf statistics :branch-covered))
-         (branch-total (getf statistics :branch-total)))
+         (branch-total (getf statistics :branch-total))
+         (expression-percentage (coverage-percentage expression-covered expression-total))
+         (branch-percentage (coverage-percentage branch-covered branch-total)))
     (format t "~&~%Coverage (src/):~%  expression ~,1F% (~D/~D)~%  branch     ~,1F% (~D/~D)~%"
-            (coverage-percentage expression-covered expression-total) expression-covered expression-total
-            (coverage-percentage branch-covered branch-total) branch-covered branch-total)
-    (funcall (cl-weave-symbol "SAVE-COVERAGE") (merge-pathnames "coverage.dat" root))))
+            expression-percentage expression-covered expression-total
+            branch-percentage branch-covered branch-total)
+    (funcall (cl-weave-symbol "SAVE-COVERAGE") (coverage-data-path root))
+    (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
+    (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+)))
 
 (let* ((root (script-directory))
        (registry-entry (format nil "~A//" (namestring root)))

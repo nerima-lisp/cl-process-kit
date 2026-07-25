@@ -48,7 +48,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (let ((result (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
                                  :input input :cancellation-token token :grace-period 0.1d0 :on-cancel :return)))
         (expect (process-result-cancelled-p result) :to-be-truthy)
-        (expect (= (process-result-signal result) 9) :to-be-truthy))))
+        (expect (= (process-result-signal result) 9) :to-be-truthy)
+        (expect (process-success-p result) :to-be nil))))
 
   (it "run-command/checked returns a successful command result"
     (let ((result (run-command/checked (make-command "/bin/sh" (list "-c" "printf ok")))))
@@ -58,7 +59,18 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
   (it "run-command/checked signals process-exit-error"
     (handler-case (run-command/checked (make-command "/bin/sh" (list "-c" "exit 6")))
       (process-exit-error (condition)
-        (expect (= (process-result-exit-code (process-exit-error-result condition)) 6) :to-be-truthy)))))
+        (expect (= (process-result-exit-code (process-exit-error-result condition)) 6) :to-be-truthy))))
+
+  (it "run-command signals process-timeout-error on its default :on-timeout :error"
+    (signals process-timeout-error
+      (run-command (make-command "/bin/sh" (list "-c" "sleep 5")) :timeout 0.2d0 :grace-period 0.1d0)))
+
+  (it "run-command signals process-cancelled-error on its default :on-cancel :error"
+    (let* ((token (make-cancellation-token)))
+      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
+      (signals process-cancelled-error
+        (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
+                     :cancellation-token token :grace-period 0.1d0)))))
 
 (describe "run basics"
   (it "run captures stdout and a zero exit-code on success"
@@ -173,12 +185,20 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (process-exit-error (condition)
         (let ((result (process-exit-error-result condition)))
           (expect (= (process-result-exit-code result) 7) :to-be-truthy)
-          (expect (string= (process-result-stderr result) "failed") :to-be-truthy))))))
+          (expect (string= (process-result-stderr result) "failed") :to-be-truthy)))))
+
+  (it "run/checked signals process-cancelled-error on its default :on-cancel :error"
+    (let* ((token (make-cancellation-token)))
+      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
+      (signals process-cancelled-error
+        (run/checked "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
+                     :cancellation-token token :grace-period 0.1d0)))))
 
 (describe "run timeout and signal escalation"
   (it "run with on-timeout :return sets timed-out-p on a real timeout"
     (let ((result (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :return)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)))
+      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect (process-success-p result) :to-be nil)))
 
   (it "run with on-timeout :error signals process-timeout-error with the right slots"
     (signals process-timeout-error
@@ -344,4 +364,22 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (sb-thread:join-thread canceller)
       (expect (process-result-cancelled-p result) :to-be-truthy)
       (expect (string= (process-result-stdout result) "leader") :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy))))
+      (expect (< elapsed 2) :to-be-truthy)))
+
+  (it "signals process-io-error when the cancellation watcher does not report joining in time"
+    ;; Force JOIN-THREAD to report :TIMED-OUT for the watcher specifically
+    ;; (matched by name, so copier/feeder threads elsewhere in the same call
+    ;; still join for real) -- the watcher's own escalation logic never runs
+    ;; here; this drives COMMUNICATE's own "did the watcher actually stop"
+    ;; check, not the watcher's cancellation behavior.
+    (let ((original-join (function sb-thread:join-thread)))
+      (sb-ext:without-package-locks
+        (with-mocked-functions
+            (((symbol-function 'sb-thread:join-thread)
+              (lambda (thread &rest args)
+                (if (string= (sb-thread:thread-name thread) "process-kit cancellation watcher")
+                    :timed-out
+                    (apply original-join thread args)))))
+          (signals process-io-error
+            (communicate (spawn "/bin/sh" (list "-c" "printf ok") :output :stream :error :stream)
+                         :cancellation-token (make-cancellation-token))))))))

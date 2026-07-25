@@ -122,58 +122,64 @@ this file follows."
   (check-type process process-handle)
   (%ensure (not (member :cancellation-token options :test #'eq))
            "COMMUNICATE-ASYNC owns its cancellation token.")
-  (let* ((callback (getf options :event-callback))
-         (capacity (if (member :event-queue-capacity options :test #'eq)
-                       (getf options :event-queue-capacity) 64))
-         (policy (if (member :event-overflow-policy options :test #'eq)
-                     (getf options :event-overflow-policy) :drop-newest))
-         (history-capacity (if (member :event-history-capacity options :test #'eq)
-                               (getf options :event-history-capacity) capacity))
-         (communication-options
-           (%plist-without options '(:event-callback :event-queue-capacity :event-overflow-policy
-                                      :event-history-capacity)))
-         (token (make-cancellation-token))
-         (task (%make-process-task
-                :process process :token token :capacity capacity :overflow-policy policy :callback callback
-                :events (make-array (if (and (integerp history-capacity) (not (minusp history-capacity)))
-                                         history-capacity 0))
-                :callback-errors (make-array (if (and (integerp history-capacity) (not (minusp history-capacity)))
-                                                  history-capacity 0))))
-         (contract (%async-contract communication-options)))
-    (%ensure (and (integerp capacity) (plusp capacity)) "EVENT-QUEUE-CAPACITY must be positive.")
-    (%ensure (and (integerp history-capacity) (not (minusp history-capacity)))
-             "EVENT-HISTORY-CAPACITY must be non-negative.")
-    (%ensure (member policy '(:drop-newest :block) :test #'eq) "Unknown event overflow policy ~S." policy)
-    (when callback (check-type callback function))
-    (%validate-communication-options
-     (getf contract :input) (getf contract :timeout) (getf contract :grace-period) (getf contract :poll-interval)
-     (getf contract :timeout-signal) (getf contract :kill-signal) (getf contract :on-timeout)
-     (getf contract :max-output-characters) (getf contract :drain-timeout-seconds) (getf contract :result-type)
-     (getf contract :decoding-error-policy) (getf contract :clock) (getf contract :sleeper))
-    (%reserve-communication process contract task)
-    (handler-case
-        (progn
-          (setf (%process-task-dispatcher task)
-                (sb-thread:make-thread (lambda () (%task-dispatch task)) :name "process-kit event dispatcher"))
-          (setf (%process-task-worker task)
-                (sb-thread:make-thread
-                 (lambda ()
-                   (sb-thread:with-mutex ((%process-task-mutex task)) (setf (%process-task-state task) :running))
-                   (let ((*communication-reservation-owner* task)
-                         (*process-event-sink* (lambda (kind octets) (%task-submit-output task kind octets))))
-                     (handler-case
-                         (%task-finish task
-                                       (apply #'communicate process
-                                              (append communication-options
-                                                      (list :cancellation-token token :on-cancel :return)))
-                                       nil)
-                       (condition (condition) (%task-finish task nil condition)))))
-                 :name "process-kit communicate worker"))
-          task)
-      (condition (condition)
-        (%release-communication-reservation process task)
-        (when (%process-task-dispatcher task) (%task-finish task nil condition))
-        (error condition)))))
+  (flet ((launch-communicate-async-threads (task process communication-options token)
+           "Start TASK's dispatcher and worker threads and return TASK. On
+any failure to get both threads running, release TASK's communication
+reservation and mark it finished with the failing CONDITION before
+re-signaling, so a caller never sees a task stuck in :RESERVED."
+           (handler-case
+               (progn
+                 (setf (%process-task-dispatcher task)
+                       (sb-thread:make-thread (lambda () (%task-dispatch task)) :name "process-kit event dispatcher"))
+                 (setf (%process-task-worker task)
+                       (sb-thread:make-thread
+                        (lambda ()
+                          (sb-thread:with-mutex ((%process-task-mutex task)) (setf (%process-task-state task) :running))
+                          (let ((*communication-reservation-owner* task)
+                                (*process-event-sink* (lambda (kind octets) (%task-submit-output task kind octets))))
+                            (handler-case
+                                (%task-finish task
+                                              (apply #'communicate process
+                                                     (append communication-options
+                                                             (list :cancellation-token token :on-cancel :return)))
+                                              nil)
+                              (condition (condition) (%task-finish task nil condition)))))
+                        :name "process-kit communicate worker"))
+                 task)
+             (condition (condition)
+               (%release-communication-reservation process task)
+               (when (%process-task-dispatcher task) (%task-finish task nil condition))
+               (error condition)))))
+    (let* ((callback (getf options :event-callback))
+           (capacity (if (member :event-queue-capacity options :test #'eq)
+                         (getf options :event-queue-capacity) 64))
+           (policy (if (member :event-overflow-policy options :test #'eq)
+                       (getf options :event-overflow-policy) :drop-newest))
+           (history-capacity (if (member :event-history-capacity options :test #'eq)
+                                 (getf options :event-history-capacity) capacity))
+           (communication-options
+             (%plist-without options '(:event-callback :event-queue-capacity :event-overflow-policy
+                                        :event-history-capacity)))
+           (token (make-cancellation-token))
+           (task (%make-process-task
+                  :process process :token token :capacity capacity :overflow-policy policy :callback callback
+                  :events (make-array (if (and (integerp history-capacity) (not (minusp history-capacity)))
+                                           history-capacity 0))
+                  :callback-errors (make-array (if (and (integerp history-capacity) (not (minusp history-capacity)))
+                                                    history-capacity 0))))
+           (contract (%async-contract communication-options)))
+      (%ensure (and (integerp capacity) (plusp capacity)) "EVENT-QUEUE-CAPACITY must be positive.")
+      (%ensure (and (integerp history-capacity) (not (minusp history-capacity)))
+               "EVENT-HISTORY-CAPACITY must be non-negative.")
+      (%ensure (member policy '(:drop-newest :block) :test #'eq) "Unknown event overflow policy ~S." policy)
+      (when callback (check-type callback function))
+      (%validate-communication-options
+       (getf contract :input) (getf contract :timeout) (getf contract :grace-period) (getf contract :poll-interval)
+       (getf contract :timeout-signal) (getf contract :kill-signal) (getf contract :on-timeout)
+       (getf contract :max-output-characters) (getf contract :drain-timeout-seconds) (getf contract :result-type)
+       (getf contract :decoding-error-policy) (getf contract :clock) (getf contract :sleeper))
+      (%reserve-communication process contract task)
+      (launch-communicate-async-threads task process communication-options token))))
 
 (defun await-process (task &key timeout)
   (check-type task process-task)

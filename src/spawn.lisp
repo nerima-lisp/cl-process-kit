@@ -10,6 +10,65 @@
 
 (in-package #:process-kit)
 
+;;; --- :FD-LIMIT ---------------------------------------------------------
+;;;
+;;; SB-POSIX has no RLIMIT bindings, so this is a direct SB-ALIEN FFI call
+;;; to the system libc's GETRLIMIT/SETRLIMIT. RLIM_T is an unsigned long on
+;;; every platform this library targets (macOS and Linux, both LP64), but
+;;; RLIMIT_NOFILE's integer value is NOT portable (7 on Linux, 8 on Darwin
+;;; -- see native/spawn.c's own PARSE_RESOURCE, which resolves the same
+;;; symbolic constant at C compile time instead).
+;;;
+;;; Why this exists: SB-EXT:RUN-PROGRAM's forked child closes every
+;;; inherited file descriptor up to RLIMIT_NOFILE one syscall at a time on
+;;; Darwin (its fast /dev/fd/-listing path is dead code in this SBCL
+;;; build). On a host with a very large NOFILE soft limit (routine under
+;;; Nix/direnv shells -- 524288 was observed locally), that is hundreds of
+;;; thousands of wasted CLOSE(2) calls per spawn, confirmed via SB-SPROF
+;;; and direct measurement to account for roughly a third of per-call
+;;; latency. Lowering the limit is inherited by the child through EXEC
+;;; (rlimits survive exec) and therefore changes the child's own ulimit --
+;;; a real behavioral difference, not just an internal optimization -- so
+;;; SPAWN/RUN only apply it when a caller opts in via :FD-LIMIT.
+(sb-alien:define-alien-type nil
+  (sb-alien:struct %rlimit (cur sb-alien:unsigned-long) (max sb-alien:unsigned-long)))
+
+(sb-alien:define-alien-routine ("getrlimit" %c-getrlimit) sb-alien:int
+  (resource sb-alien:int) (limit (* (sb-alien:struct %rlimit))))
+
+(sb-alien:define-alien-routine ("setrlimit" %c-setrlimit) sb-alien:int
+  (resource sb-alien:int) (limit (* (sb-alien:struct %rlimit))))
+
+(defconstant +rlimit-nofile+ #+darwin 8 #+linux 7
+  "RLIMIT_NOFILE's <sys/resource.h> integer value. Not portable across
+POSIX platforms in general; correct for the two this library targets.")
+
+(defun %get-nofile-limit ()
+  "(VALUES SOFT HARD) -- this process's current RLIMIT_NOFILE."
+  (sb-alien:with-alien ((limit (sb-alien:struct %rlimit)))
+    (%ensure (zerop (%c-getrlimit +rlimit-nofile+ (sb-alien:addr limit))) "getrlimit(RLIMIT_NOFILE) failed.")
+    (values (sb-alien:slot limit 'cur) (sb-alien:slot limit 'max))))
+
+(defun %set-nofile-limit (soft hard)
+  (sb-alien:with-alien ((limit (sb-alien:struct %rlimit)))
+    (setf (sb-alien:slot limit 'cur) soft (sb-alien:slot limit 'max) hard)
+    (%ensure (zerop (%c-setrlimit +rlimit-nofile+ (sb-alien:addr limit))) "setrlimit(RLIMIT_NOFILE) failed.")))
+
+(defun call-with-spawn-fd-limit (limit thunk)
+  "Call THUNK with this process's RLIMIT_NOFILE soft limit temporarily
+lowered to (MIN LIMIT its-hard-limit), restoring the original limit
+afterward regardless of how THUNK exits. A NIL LIMIT calls THUNK directly,
+leaving the ambient limit untouched -- SPAWN's default. A process THUNK
+forks inherits the lowered limit and (rlimits surviving EXEC) keeps it for
+its own lifetime; this process's own limit is back to normal by the time
+this function returns."
+  (if (null limit)
+      (funcall thunk)
+      (multiple-value-bind (original-soft original-hard) (%get-nofile-limit)
+        (unwind-protect
+             (progn (%set-nofile-limit (min limit original-hard) original-hard) (funcall thunk))
+          (%set-nofile-limit original-soft original-hard)))))
+
 (defun %string-contains-nul-p (value) (and (stringp value) (position #\Null value)))
 
 (defun %validate-environment (environment)
@@ -47,20 +106,25 @@
       (when (streamp stream) (ignore-errors (close stream))))))
 
 (defun spawn (command arguments &key (search nil) input output error environment directory
-                                   (external-format :default) status-hook preserve-fds)
+                                   (external-format :default) status-hook preserve-fds fd-limit)
   (let ((raw nil) (requested-command command))
     (handler-case
         (progn
           (%validate-spawn-inputs command arguments environment)
           (%ensure (not (eq input t)) "INPUT T cannot safely isolate the child process group.")
+          (%ensure (or (null fd-limit) (and (integerp fd-limit) (plusp fd-limit)))
+                   "FD-LIMIT must be NIL or a positive integer.")
           (when search
             (setf command (%resolve-executable command arguments environment directory)))
           (setf raw
-                (sb-ext:run-program
-                 command arguments :search nil :input input :output output
-                 :error error :environment environment :directory directory
-                 :external-format external-format :status-hook status-hook
-                 :preserve-fds preserve-fds :wait nil :use-posix-spawn nil))
+                (call-with-spawn-fd-limit
+                 fd-limit
+                 (lambda ()
+                   (sb-ext:run-program
+                    command arguments :search nil :input input :output output
+                    :error error :environment environment :directory directory
+                    :external-format external-format :status-hook status-hook
+                    :preserve-fds preserve-fds :wait nil :use-posix-spawn nil))))
           (let* ((pid (sb-ext:process-pid raw))
                  (pgid (with-posix-errno-case (sb-posix:getpgid pid)
                          (sb-posix:esrch pid))))

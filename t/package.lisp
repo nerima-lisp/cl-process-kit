@@ -13,3 +13,9 @@
     (error "cl-process-kit test suite failed"))
   (format t "~&cl-process-kit/test: successful completion with 0 failures~%")
   t)
+
+(defun %spawn-sleeping (&optional (seconds "5"))
+  "Spawn a long-lived `sleep SECONDS` child via the ambient PATH -- the
+generic 'give me a process that stays alive until I signal/kill/time it
+out' fixture every timeout/cancellation/process-group edge-case test needs."
+  (spawn "sleep" (list seconds) :search t :environment (sb-ext:posix-environ)))

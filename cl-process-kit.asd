@@ -52,7 +52,7 @@ across several sister projects into a single, reusable library."
   ((:file "package") (:file "conditions-test") (:file "spawn-test") (:file "native-spawn-test")
    (:file "run-test") (:file "process-handle-test") (:file "pipeline-test") (:file "async-task-test")
    (:file "logging-test") (:file "edge-coverage-test") (:file "validation-test")
-   (:file "property-test")))
+   (:file "property-test") (:file "performance-test")))
 
 (asdf:defsystem "cl-process-kit/pty"
   :description "Optional native controlling-terminal PTY backend"

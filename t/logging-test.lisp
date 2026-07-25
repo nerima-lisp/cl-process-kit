@@ -91,6 +91,20 @@ LOG-KIT records it emitted, in emission order."
       (expect cancelled :not :to-be-null)
       (expect (log-kit:log-record-level cancelled) :to-equal log-kit:+level-warn+)))
 
+  (it "emits an :error 'pipeline stage failed, terminating pipeline' record"
+    (with-mocked-functions
+        (((symbol-function 'process-kit::communicate)
+          (lambda (process &rest options)
+            (declare (ignore process options))
+            (error "pipeline worker failure"))))
+      (let* ((records (capturing-log
+                        (ignore-errors
+                          (run-pipeline (list (make-command "/bin/sh" (list "-c" "sleep 5"))
+                                              (make-command "/bin/sh" (list "-c" "sleep 5")))))))
+             (failure (record-with-message records "pipeline stage failed, terminating pipeline")))
+        (expect failure :not :to-be-null)
+        (expect (log-kit:log-record-level failure) :to-equal log-kit:+level-error+))))
+
   (it "stays silent -- emits nothing -- while *process-logger* is NIL"
     (let ((*process-logger* nil))
       ;; A direct sanity check that the default path allocates no records:

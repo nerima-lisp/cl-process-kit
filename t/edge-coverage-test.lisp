@@ -44,21 +44,26 @@
 
 (describe "process-handle query edge arms"
   (it "process-wait returns NIL once its own timeout expires on a live child"
-    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
+    (with-process (process (%spawn-sleeping))
       (expect (process-wait process :timeout 0.05d0) :to-be-null)))
 
   (it "process-signal is NIL for a normally exited child and process-exit-code is NIL for a signaled one"
-    ;; A clean exit: exit-code is present, signal is absent.
-    (with-process (exited (spawn "/bin/sh" (list "-c" "exit 0")))
-      (process-wait exited)
-      (expect (process-exit-code exited) :to-equal 0)
-      (expect (process-signal exited) :to-be-null))
-    ;; A SIGKILL: signal is present, exit-code is absent.
-    (with-process (killed (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
-      (process-kill killed)
-      (process-wait killed)
-      (expect (process-signal killed) :to-equal 9)
-      (expect (process-exit-code killed) :to-be-null))))
+    ;; Two independent scenarios, four independent checks -- WITH-SOFT-
+    ;; ASSERTIONS runs every one and reports all failures together, so a
+    ;; regression in (say) just the SIGKILL scenario isn't hidden behind an
+    ;; abort on the clean-exit scenario's first failing check.
+    (cl-weave:with-soft-assertions
+      ;; A clean exit: exit-code is present, signal is absent.
+      (with-process (exited (spawn "/bin/sh" (list "-c" "exit 0")))
+        (process-wait exited)
+        (expect (process-exit-code exited) :to-equal 0)
+        (expect (process-signal exited) :to-be-null))
+      ;; A SIGKILL: signal is present, exit-code is absent.
+      (with-process (killed (%spawn-sleeping))
+        (process-kill killed)
+        (process-wait killed)
+        (expect (process-signal killed) :to-equal 9)
+        (expect (process-exit-code killed) :to-be-null)))))
 
 ;;; --- UTF-8 decoding edge arms --------------------------------------------
 ;;;
@@ -116,7 +121,38 @@
       (let* ((bytes (sb-ext:string-to-octets "abc" :external-format :utf-8))
              (first (communicate process :input bytes :result-type :octets)))
         (expect (eq (communicate process :input (copy-seq bytes) :result-type :octets) first)
-                :to-be-truthy)))))
+                :to-be-truthy))))
+
+  (it "rejects a same-length octet-vector input that differs in content"
+    (with-process (process (spawn "cat" nil :input :stream :output :stream :error :stream :search t :environment (sb-ext:posix-environ)))
+      (communicate process :input (sb-ext:string-to-octets "abc" :external-format :utf-8) :result-type :octets)
+      (signals communicate-options-mismatch
+        (communicate process :input (sb-ext:string-to-octets "xyz" :external-format :utf-8) :result-type :octets)))))
+
+;;; --- communication reservation state machine ------------------------------
+;;;
+;;; %RESERVE-COMMUNICATION/%BEGIN-COMMUNICATION are the internal state machine
+;;; behind COMMUNICATE's at-most-once contract; driving them directly (rather
+;;; than racing threads against COMMUNICATE-ASYNC's real reservation window)
+;;; deterministically exercises the "someone else is already communicating"
+;;; arms that public callers only ever hit under a timing race.
+
+(describe "communication reservation state machine"
+  (it "rejects begin-communication while communication is already in progress"
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok") :input :stream :output :stream :error :stream))
+      (process-kit::%begin-communication process)
+      (signals error (process-kit::%begin-communication process))))
+
+  (it "rejects reserve-communication while communication is already in progress"
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok") :input :stream :output :stream :error :stream))
+      (process-kit::%begin-communication process)
+      (signals error
+        (process-kit::%reserve-communication process (process-kit::%make-communication-contract) 'another-owner))))
+
+  (it "rejects begin-communication while another owner holds the reservation"
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok") :input :stream :output :stream :error :stream))
+      (process-kit::%reserve-communication process (process-kit::%make-communication-contract) 'test-owner)
+      (signals error (process-kit::%begin-communication process)))))
 
 (describe "copier error propagation"
   (it "re-signals a copier thread's failure as process-io-error when draining"
@@ -139,14 +175,14 @@
 
 (describe "process-group signaling"
   (it "rejects an out-of-range signal number"
-    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
+    (with-process (process (%spawn-sleeping))
       (expect (raises-error-p (lambda () (process-terminate process 99))) :to-be-truthy)
       (expect (raises-error-p (lambda () (process-send-leader-signal process 0))) :to-be-truthy)))
 
   (it "signals the owned process group directly"
-    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
+    (with-process (process (%spawn-sleeping))
       (expect (process-send-group-signal process 15) :to-be-truthy)))
 
   (it "signals the live group leader directly"
-    (with-process (process (spawn "sleep" (list "5") :search t :environment (sb-ext:posix-environ)))
+    (with-process (process (%spawn-sleeping))
       (expect (process-send-leader-signal process 15) :to-be-truthy))))

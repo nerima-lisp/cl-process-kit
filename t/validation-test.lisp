@@ -46,6 +46,8 @@
    (command-thunk "/bin/true" nil :environment-update (list (cons "A=B" "1")))
    (command-thunk "/bin/true" nil :environment-update (list (cons "" "1")))
    (command-thunk "/bin/true" nil :environment-update (list (cons "A" "1") (cons "A" "2")))
+   (cons "environment-update-dotted-list"
+         (lambda () (make-command "/bin/true" nil :environment-update (cons (cons "A" "1") "not-a-list"))))
    ;; stdio policies
    (command-thunk "/bin/true" nil :stdin :bogus)
    (command-thunk "/bin/true" nil :stdin :stdout)   ; :stdout is only valid for stderr
