@@ -4,6 +4,33 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Readability
+
+- `src/communicate.lisp`: `communicate`'s cancellation watcher body -- a
+  ~20-line anonymous lambda passed straight to `sb-thread:make-thread` --
+  is now a named local function, `run-cancellation-watcher`, alongside its
+  `labels` siblings (`finished-p`, `mark-cancelled`, etc.), so the thread
+  creation call reads as `#'run-cancellation-watcher` instead of an
+  unlabeled inline block. Extracted with `paredit-cli`.
+- `src/spawn.lisp` and `src/command.lisp` each independently validated a
+  `"KEY=VALUE"` environment-string entry (non-empty key before `=`,
+  rejecting a duplicate key) with byte-for-byte identical logic under two
+  different error-message labels. Extracted the shared shape into
+  `%validate-environment-entry-shape` (`src/command.lisp`, next to
+  `%validate-environment-entries`, its other caller) via
+  `paredit refactor extract-function`; `spawn.lisp`'s
+  `%validate-environment` now calls it with `"ENVIRONMENT"`, matching the
+  uppercase label convention `%validate-environment-entries` already uses
+  for `"ENVIRONMENT-POLICY"`/`"ENVIRONMENT-UPDATE"` (previously
+  `spawn.lisp` alone used mixed-case "Environment" in its error text; no
+  test asserted on the literal message, so this also fixes a real
+  inconsistency, not just a duplication). Found via `paredit inspect
+  similarity --threshold 0.85 src` (score 44.5, 46 shared AST nodes) rather
+  than searched for. Net effect: fewer total expression/branch points to
+  cover (4736/676 -> 4726/670), so `src/`'s coverage percentage rose
+  slightly (87.5% -> 87.6% expression) as a side effect of having less
+  duplicated code, not a coverage change pursued for its own sake.
+
 ### Testing
 
 - `t/validation-test.lisp`'s `make-command`/`spawn-native` guard-clause

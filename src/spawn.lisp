@@ -78,12 +78,7 @@ this function returns."
       (dolist (entry environment)
         (%ensure (stringp entry) "Environment entry must be a string: ~S" entry)
         (%ensure (not (%string-contains-nul-p entry)) "Environment entry contains NUL: ~S" entry)
-        (let ((separator (position #\= entry)))
-          (%ensure (and separator (plusp separator))
-                   "Environment entry must contain a non-empty key followed by =: ~S" entry)
-          (let ((key (subseq entry 0 separator)))
-            (%ensure (not (gethash key seen)) "Duplicate environment key: ~S" key)
-            (setf (gethash key seen) t))))))
+        (%validate-environment-entry-shape entry "ENVIRONMENT" seen))))
   environment)
 
 (defun %validate-spawn-inputs (command arguments environment)
