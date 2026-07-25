@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Testing
+
+- `t/validation-test.lisp`'s `make-command`/`spawn-native` guard-clause
+  tables now use `cl-weave:it-each` instead of a hand-rolled `dolist` over a
+  list of `(label . thunk)` conses: every one of the 22 + 3 malformed-input
+  rows is now its own independently-named, independently-reported test case
+  (e.g. "rejects an empty program", "rejects a dotted (improper)
+  :environment-update list") instead of one aggregate pass/fail that hid
+  which row actually failed. Test count 152 -> 174; behavior and coverage
+  unchanged, since it's the same guard clauses exercised the same way.
+- Added `t/mutation-test.lisp`: `cl-weave:run-mutations` mutation-tests
+  `process-success-p` and `pipeline-success-p` (`src/command.lisp`),
+  systematically flipping their comparison/boolean logic and asserting the
+  existing case battery notices every one-operator change
+  (`cl-weave:assert-mutation-score` at a required 1.0 -- no surviving
+  mutants). Coverage proves a line executed, not that a wrong result there
+  would be caught; mutation testing closes that specific gap for these two
+  pure predicates. Follows the exact pattern `nerima-lisp/cl-tty-kit`
+  already established for this ecosystem (`contrib/weave-mutation-tests.lisp`):
+  the `DEFUN` body is read live from `src/command.lisp` on every run (never
+  copied into the test file), so there is nothing to fall out of sync with
+  the real implementation.
+
 ### Dependencies
 
 - Bumped `cl-weave` v0.11.0 -> v1.0.0, `cl-boundary-kit` v0.5.0 -> v0.6.0,

@@ -5,8 +5,10 @@
 ;;;; trampoline decodes a fixed-layout error record through a handful of pure
 ;;;; helpers. The behavioral suites exercise the happy path; this file drives
 ;;;; the rejection arm of every guard and every branch of the pure decoders,
-;;;; data-first: *INVALID-COMMANDS* is a table of (label . thunk) rows, and one
-;;;; example walks it so a new guard is covered by adding a row, not a test.
+;;;; data-first: CL-WEAVE:IT-EACH expands each (label program arguments
+;;;; keyword-plist) row below into its own independently-reported test case
+;;;; at macro-expansion time, so a new guard is covered by adding a row, not
+;;;; a test, and a failing row's label shows up directly in the report.
 
 (in-package #:cl-process-kit/test)
 
@@ -15,51 +17,41 @@
   (handler-case (progn (funcall thunk) nil)
     (error () t)))
 
-(defmacro command-thunk (&rest make-command-args)
-  "A (LABEL . THUNK) row whose THUNK calls MAKE-COMMAND with MAKE-COMMAND-ARGS."
-  `(cons ',make-command-args (lambda () (make-command ,@make-command-args))))
-
-(defparameter +nul+ (code-char 0))
-
-(defparameter *invalid-commands*
-  (list
-   ;; program
-   (command-thunk "" nil)
-   (command-thunk 42 nil)
-   (cons "program-with-nul" (lambda () (make-command (format nil "a~Cb" +nul+) nil)))
-   ;; arguments
-   (command-thunk "/bin/true" "not-a-list")
-   (command-thunk "/bin/true" (list "ok" 5))
-   (command-thunk "/bin/true" (cons "a" "b"))
-   (cons "argument-with-nul" (lambda () (make-command "/bin/true" (list (format nil "a~Cb" +nul+)))))
-   ;; search
-   (command-thunk "/bin/true" nil :search 7)
-   ;; environment-policy
-   (command-thunk "/bin/true" nil :environment-policy 42)
-   (command-thunk "/bin/true" nil :environment-policy (list "NO-EQUALS-SIGN"))
-   (command-thunk "/bin/true" nil :environment-policy (list "=leading-equals"))
-   (command-thunk "/bin/true" nil :environment-policy (list "A=1" "A=2"))
-   (cons "env-policy-nul"
-         (lambda () (make-command "/bin/true" nil :environment-policy (list (format nil "A=~C" +nul+)))))
-   ;; environment-update
-   (command-thunk "/bin/true" nil :environment-update (list (cons "A" 1)))
-   (command-thunk "/bin/true" nil :environment-update (list (cons "A=B" "1")))
-   (command-thunk "/bin/true" nil :environment-update (list (cons "" "1")))
-   (command-thunk "/bin/true" nil :environment-update (list (cons "A" "1") (cons "A" "2")))
-   (cons "environment-update-dotted-list"
-         (lambda () (make-command "/bin/true" nil :environment-update (cons (cons "A" "1") "not-a-list"))))
-   ;; stdio policies
-   (command-thunk "/bin/true" nil :stdin :bogus)
-   (command-thunk "/bin/true" nil :stdin :stdout)   ; :stdout is only valid for stderr
-   (command-thunk "/bin/true" nil :stdout :nope)
-   ;; result / decoding
-   (command-thunk "/bin/true" nil :result-type :bogus)
-   (command-thunk "/bin/true" nil :decoding-error-policy :bogus)))
-
 (describe "make-command guard clauses"
-  (it "rejects every malformed command specification in the table"
-    (dolist (row *invalid-commands*)
-      (expect (raises-error-p (cdr row)) :to-be-truthy)))
+  (cl-weave:it-each
+      (("an empty program" "" nil ())
+       ("a program that is not a string" 42 nil ())
+       ("a program containing a NUL byte" #.(format nil "a~Cb" (code-char 0)) nil ())
+       ("arguments that are not a list" "/bin/true" "not-a-list" ())
+       ("a non-string argument" "/bin/true" ("ok" 5) ())
+       ("a dotted (improper) arguments list" "/bin/true" ("a" . "b") ())
+       ("an argument containing a NUL byte" "/bin/true" (#.(format nil "a~Cb" (code-char 0))) ())
+       ("a non-integer :search" "/bin/true" nil (:search 7))
+       ("a non-list :environment-policy" "/bin/true" nil (:environment-policy 42))
+       ("an :environment-policy entry without an = sign" "/bin/true" nil
+        (:environment-policy ("NO-EQUALS-SIGN")))
+       ("an :environment-policy entry with a leading =" "/bin/true" nil
+        (:environment-policy ("=leading-equals")))
+       ("a duplicate :environment-policy key" "/bin/true" nil (:environment-policy ("A=1" "A=2")))
+       ("an :environment-policy entry containing a NUL byte" "/bin/true" nil
+        (:environment-policy (#.(format nil "A=~C" (code-char 0)))))
+       ("a non-string :environment-update value" "/bin/true" nil (:environment-update (("A" . 1))))
+       ("an :environment-update key containing =" "/bin/true" nil (:environment-update (("A=B" . "1"))))
+       ("an empty :environment-update key" "/bin/true" nil (:environment-update (("" . "1"))))
+       ("a duplicate :environment-update key" "/bin/true" nil
+        (:environment-update (("A" . "1") ("A" . "2"))))
+       ("a dotted (improper) :environment-update list" "/bin/true" nil
+        (:environment-update (("A" . "1") . "not-a-list")))
+       ("an unknown :stdin policy" "/bin/true" nil (:stdin :bogus))
+       ("a :stdin policy of :stdout, which is only valid for :stderr" "/bin/true" nil (:stdin :stdout))
+       ("an unknown :stdout policy" "/bin/true" nil (:stdout :nope))
+       ("an unknown :result-type" "/bin/true" nil (:result-type :bogus))
+       ("an unknown :decoding-error-policy" "/bin/true" nil (:decoding-error-policy :bogus)))
+      "rejects ~A"
+      (label program arguments keyword-plist)
+    (declare (ignore label))
+    (expect (raises-error-p (lambda () (apply #'make-command program arguments keyword-plist)))
+            :to-be-truthy))
 
   (it "accepts a fully-specified valid command, deep-copying mutable slots"
     (let* ((args (list "a" "b"))
@@ -104,14 +96,11 @@ applicable protocol method' arm of %PROTOCOL-OBJECT-P."))
       (expect (raises-error-p (lambda () (run "/bin/true" nil :sleeper impostor))) :to-be-truthy))))
 
 (describe "spawn-native argument validation"
-  (it "rejects a structurally invalid fd mapping"
-    (expect (raises-error-p (lambda () (process-kit::spawn-native "/bin/true" nil
-                                                                  :fd-mappings (list (cons 'x 'y)))))
-            :to-be-truthy))
-  (it "rejects duplicate fd targets"
-    (expect (raises-error-p (lambda () (process-kit::spawn-native "/bin/true" nil
-                                                                  :fd-mappings (list (cons 1 2) (cons 1 3)))))
-            :to-be-truthy))
-  (it "rejects joining a pre-existing process group"
-    (expect (raises-error-p (lambda () (process-kit::spawn-native "/bin/true" nil :process-group 42)))
+  (cl-weave:it-each (("a structurally invalid fd mapping" (:fd-mappings ((x . y))))
+                     ("duplicate fd targets" (:fd-mappings ((1 . 2) (1 . 3))))
+                     ("joining a pre-existing process group" (:process-group 42)))
+      "rejects ~A"
+      (label spawn-native-options)
+    (declare (ignore label))
+    (expect (raises-error-p (lambda () (apply #'process-kit::spawn-native "/bin/true" nil spawn-native-options)))
             :to-be-truthy)))
