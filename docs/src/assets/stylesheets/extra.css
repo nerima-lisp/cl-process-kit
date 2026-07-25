@@ -1,0 +1,33 @@
+/* cl-process-kit documentation — small brand-level polish on top of Material. */
+
+:root {
+  --md-primary-fg-color: #3f51b5;
+  --md-primary-fg-color--light: #5c6bc0;
+  --md-primary-fg-color--dark: #2c387e;
+  --md-accent-fg-color: #5c6bc0;
+}
+
+/* Tint the grid-card icons with the brand indigo and lift cards on hover. */
+.md-typeset .grid.cards > ul > li .twemoji svg,
+.md-typeset .grid.cards > :is(ul, ol) > li .lg.middle svg {
+  fill: var(--md-primary-fg-color);
+}
+
+.md-typeset .grid.cards > :is(ul, ol) > li {
+  border-radius: 0.5rem;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.md-typeset .grid.cards > :is(ul, ol) > li:hover {
+  border-color: var(--md-primary-fg-color--light);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+/* Slightly tighter code blocks read better for Lisp forms. */
+.md-typeset pre > code {
+  font-variant-ligatures: none;
+}

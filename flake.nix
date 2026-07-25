@@ -39,6 +39,36 @@
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
       sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
+
+      mkDocs =
+        pkgs:
+        pkgs.stdenvNoCC.mkDerivation {
+          pname = "cl-process-kit-docs";
+          version = "0.1.0";
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              ./docs/mkdocs.yml
+              ./docs/src
+              ./CHANGELOG.md
+            ];
+          };
+          nativeBuildInputs = [ pkgs.python3Packages.mkdocs-material ];
+          # Build fully offline: Material for MkDocs bundles all of its assets,
+          # so no network access is required inside the Nix sandbox. --strict
+          # promotes broken links and unlisted pages to build failures.
+          buildPhase = ''
+            runHook preBuild
+            mkdocs build --strict --config-file docs/mkdocs.yml --site-dir "$out"
+            runHook postBuild
+          '';
+          dontInstall = true;
+          meta = {
+            description = "Rendered MkDocs (Material) documentation for cl-process-kit";
+            homepage = "https://github.com/nerima-lisp/cl-process-kit";
+            license = pkgs.lib.licenses.mit;
+          };
+        };
     in
     {
       packages = forAllSystems (
@@ -91,6 +121,7 @@
               cp -R cl-process-kit.asd src "$out/share/common-lisp/source/cl-process-kit/"
             '';
           };
+          docs = mkDocs pkgs;
           default = cl-process-kit;
         }
       );

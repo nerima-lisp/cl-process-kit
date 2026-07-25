@@ -2,6 +2,12 @@
 
 [![CI](https://github.com/nerima-lisp/cl-process-kit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/nerima-lisp/cl-process-kit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-MkDocs%20Material-3f51b5)](https://nerima-lisp.github.io/cl-process-kit/)
+
+Full documentation — installation, the command/execution/async/pipeline
+guide, the PTY backend, and the results/conditions reference — is published
+at <https://nerima-lisp.github.io/cl-process-kit/>. The source for that site
+lives in [docs/src/](docs/src/README.md).
 
 `cl-process-kit` is an SBCL-only process execution toolkit for Common Lisp,
 built on the [nerima-lisp](https://github.com/orgs/nerima-lisp/repositories)

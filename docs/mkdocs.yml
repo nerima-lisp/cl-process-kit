@@ -1,0 +1,145 @@
+# cl-process-kit documentation — MkDocs + Material configuration.
+#
+# Build:   mkdocs build -f docs/mkdocs.yml --strict
+# Serve:   mkdocs serve  -f docs/mkdocs.yml
+# The Nix flake (`nix build .#docs`) drives the same config offline.
+
+site_name: cl-process-kit
+site_description: >-
+  An SBCL-only, timeout-aware process execution toolkit for Common Lisp,
+  modeled on Python's subprocess.run() and Node.js's child_process.spawn().
+site_author: nerima-lisp
+site_url: https://nerima-lisp.github.io/cl-process-kit/
+
+repo_name: nerima-lisp/cl-process-kit
+repo_url: https://github.com/nerima-lisp/cl-process-kit
+edit_uri: edit/main/docs/src/
+
+# Content lives in docs/src (mirrors the cl-weave documentation layout).
+docs_dir: src
+site_dir: ../site
+use_directory_urls: true
+
+copyright: Copyright &copy; nerima-lisp contributors — MIT License
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/cog-transfer-outline
+  favicon: assets/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/nerima-lisp/cl-process-kit
+      name: cl-process-kit on GitHub
+  generator: false
+
+plugins:
+  - search
+
+markdown_extensions:
+  # Callouts / admonitions.
+  - admonition
+  - pymdownx.details
+  # Code blocks: syntax highlighting, line numbers, inline highlighting.
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      # Resolved relative to the working directory `mkdocs` is invoked
+      # from (the repository root — see the Build/Serve commands above),
+      # so docs/src/changelog.md can pull in the root CHANGELOG.md.
+      base_path:
+        - "."
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  # Content tabs (e.g. the Nix flake / ASDF install paths).
+  - pymdownx.tabbed:
+      alternate_style: true
+  # Task lists, key bindings, smart symbols, emoji.
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.keys
+  - pymdownx.smartsymbols
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
+
+nav:
+  - Home: README.md
+  - Getting Started:
+      - Installation: installation.md
+      - Quick Start: quick-start.md
+  - Guide:
+      - Command Specifications: guide/command-specs.md
+      - Synchronous Execution: guide/execution.md
+      - Asynchronous Execution: guide/async.md
+      - Cancellation: guide/cancellation.md
+      - Pipelines: guide/pipelines.md
+      - Native Spawn Trampoline: guide/native-spawn.md
+      - PTY Backend: guide/pty.md
+      - Structured Logging: guide/logging.md
+  - Reference:
+      - Results and Conditions: reference/results-and-conditions.md
+  - Development: development.md
+  - Changelog: changelog.md

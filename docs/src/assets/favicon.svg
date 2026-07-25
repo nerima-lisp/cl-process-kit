@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="cl-process-kit">
+  <rect width="32" height="32" rx="7" fill="#3f51b5"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="11" cy="11" r="3.6"/>
+    <path d="M14.6 13.6 22 21"/>
+    <path d="M22 13v8h-8"/>
+  </g>
+</svg>

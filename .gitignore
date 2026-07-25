@@ -11,6 +11,9 @@ coverage.dat
 /result
 /result-*
 
+# MkDocs local build output (docs/mkdocs.yml sets site_dir: ../site)
+/site/
+
 # Editor/tool scratch output
 tmp/
 tmp-debug/
