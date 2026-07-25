@@ -2,6 +2,8 @@
   description = "SBCL-only process execution toolkit for Common Lisp, built on the nerima-lisp boundary and logging kits";
 
   inputs = {
+    # nixos-unstable, not nixpkgs-unstable: it advances only after the NixOS
+    # release tests pass, so it is less likely to land a broken build.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # These four nerima-lisp packages are consumed purely as raw ASDF source
@@ -11,6 +13,18 @@
     # package's own flake.nix, so their transitive dev-only inputs (e.g.
     # cl-weave's treefmt-nix, cl-boundary-kit/cl-log-kit's cl-json-kit) never
     # enter this flake's lock file.
+    #
+    # That is also why these four carry no `inputs.nixpkgs.follows`: the org
+    # standard mandates it so an input cannot drag in a second nixpkgs, but a
+    # `flake = false` input has no inputs of its own to redirect. Writing the
+    # line here would resolve to nothing and only suggest to a reader that
+    # something is being overridden. treefmt-nix below is the one real flake
+    # input, and it does carry it.
+    #
+    # Every sibling is pinned to a release tag, never a bare
+    # `github:nerima-lisp/<name>`: a bare reference follows that repo's
+    # default branch, so an upstream push to main would break this repo's CI
+    # without warning.
     cl-weave = {
       url = "github:nerima-lisp/cl-weave/v1.0.0";
       flake = false;
@@ -33,6 +47,11 @@
       url = "git+https://github.com/nerima-lisp/cl-tty-kit?ref=refs/tags/v0.6.0&submodules=1";
       flake = false;
     };
+
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -43,6 +62,7 @@
       cl-boundary-kit,
       cl-log-kit,
       cl-tty-kit,
+      treefmt-nix,
       ...
     }:
     let
@@ -53,19 +73,47 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
       sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
 
-      # Single source of truth for the package version: the `:version` form in
-      # cl-process-kit.asd. A release only ever edits the .asd file and every
-      # Nix package (default, pty, docs) follows automatically. Nix regexes are
-      # whole-string anchored and `.` never spans newlines, so the version is
-      # extracted line-by-line rather than with one multi-line match.
-      version =
+      # Reads the first `:version` form out of an ASDF system definition.
+      # Nix regexes are whole-string anchored and `.` never spans newlines, so
+      # the file is split into lines and matched line-by-line rather than with
+      # one multi-line match. The anchoring is also what keeps a
+      # `:depends-on ((:version "asdf" "3.3.1"))` line from being mistaken for
+      # the system's own version: such a line does not match end to end.
+      asdVersion =
+        asd:
         let
-          lines = nixpkgs.lib.splitString "\n" (builtins.readFile ./cl-process-kit.asd);
+          lines = nixpkgs.lib.splitString "\n" (builtins.readFile asd);
           versionLine = builtins.head (
             builtins.filter (line: builtins.match "[[:space:]]*:version \"[^\"]*\"" line != null) lines
           );
         in
         builtins.head (builtins.match "[[:space:]]*:version \"([^\"]*)\"" versionLine);
+
+      # Single source of truth for the package version: the `:version` form in
+      # cl-process-kit.asd. A release only ever edits the .asd file and every
+      # Nix package (default, pty, docs) follows automatically.
+      version = asdVersion ./cl-process-kit.asd;
+
+      # Sibling versions are read out of each pinned source's own .asd for the
+      # same reason. Hardcoding them here duplicates a fact that lives
+      # upstream, and the copies go stale silently: this flake claimed
+      # cl-log-kit 1.6.0 for a tag that never existed, and kept claiming it
+      # after the input was corrected to v1.0.0, because nothing links the
+      # string to the source it labels.
+      clBoundaryKitVersion = asdVersion "${cl-boundary-kit}/cl-boundary-kit.asd";
+      clLogKitVersion = asdVersion "${cl-log-kit}/cl-log-kit.asd";
+
+      # treefmt drives `nix fmt` and the `checks.<system>.formatting` gate.
+      # Scope is Nix only: nixfmt is a low-diff, zero-footgun formatter,
+      # whereas a YAML formatter mangles the GitHub Actions `on:` key and
+      # Markdown reformatting would churn the whole docs tree.
+      treefmtEval = forAllSystems (
+        system:
+        treefmt-nix.lib.evalModule nixpkgs.legacyPackages.${system} {
+          projectRootFile = "flake.nix";
+          programs.nixfmt.enable = true;
+        }
+      );
 
       mkDocs =
         pkgs:
@@ -104,14 +152,14 @@
           pkgs = nixpkgs.legacyPackages.${system};
           clBoundaryKit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-boundary-kit";
-            version = "0.6.0";
+            version = clBoundaryKitVersion;
             src = cl-boundary-kit;
             systems = [ "cl-boundary-kit" ];
             lispLibs = [ clLogKit ];
           };
           clLogKit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "1.6.0";
+            version = clLogKitVersion;
             src = cl-log-kit;
             systems = [ "cl-log-kit" ];
           };
@@ -154,6 +202,12 @@
         }
       );
 
+      # `nix fmt` entry point.
+      formatter = forAllSystems (system: treefmtEval.${system}.config.build.wrapper);
+
+      # Granularity lives here, NOT in extra GitHub Actions jobs: `nix flake
+      # check` evaluates each attribute as its own derivation, in parallel,
+      # with build caching. Add a check here rather than a job in ci.yml.
       checks = forAllSystems (
         system:
         let
@@ -163,7 +217,12 @@
           checkout-tests =
             pkgs.runCommand "cl-process-kit-checkout-tests"
               {
-                nativeBuildInputs = [ pkgs.sbcl pkgs.stdenv.cc pkgs.perl pkgs.coreutils ];
+                nativeBuildInputs = [
+                  pkgs.sbcl
+                  pkgs.stdenv.cc
+                  pkgs.perl
+                  pkgs.coreutils
+                ];
                 CL_SOURCE_REGISTRY = sourceRegistry;
                 # Coverage is a ratchet, not a one-off report: run-tests.lisp
                 # fails the build itself if src/ coverage regresses below the
@@ -188,7 +247,11 @@
           pty-tests =
             pkgs.runCommand "cl-process-kit-pty-tests"
               {
-                nativeBuildInputs = [ pkgs.sbcl pkgs.stdenv.cc pkgs.coreutils ];
+                nativeBuildInputs = [
+                  pkgs.sbcl
+                  pkgs.stdenv.cc
+                  pkgs.coreutils
+                ];
                 CL_SOURCE_REGISTRY = sourceRegistry;
               }
               ''
@@ -201,6 +264,18 @@
                 timeout 60 sbcl --script ${self}/run-pty-tests.lisp
                 touch "$out/passed"
               '';
+
+          # Fails `nix flake check` when any tracked Nix file is unformatted,
+          # turning the formatter into an enforced CI gate rather than a habit.
+          formatting = treefmtEval.${system}.config.build.check self;
+
+          # packages.docs runs `mkdocs build --strict`, so a broken link or a
+          # page missing from the nav fails here. Without this check the site
+          # is only ever built by docs.yml, which runs after a merge to main --
+          # so a break would surface as a failed deploy rather than a failed
+          # pull request.
+          docs = self.packages.${system}.docs;
+
           default = checkout-tests;
         }
       );
@@ -211,7 +286,12 @@
           pkgs = nixpkgs.legacyPackages.${system};
           test = pkgs.writeShellApplication {
             name = "cl-process-kit-test";
-            runtimeInputs = [ pkgs.sbcl pkgs.stdenv.cc pkgs.perl pkgs.coreutils ];
+            runtimeInputs = [
+              pkgs.sbcl
+              pkgs.stdenv.cc
+              pkgs.perl
+              pkgs.coreutils
+            ];
             text = ''
               export CL_SOURCE_REGISTRY="${sourceRegistry}"
               native_tmpdir="''${TMPDIR:-/tmp}"
