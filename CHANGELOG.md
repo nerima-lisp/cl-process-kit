@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Build/environment
+
+- `flake.nix` hardcoded `"0.2.0"` in four separate places (the docs
+  derivation, the `cl-process-kit` package, and the `cl-process-kit-pty`
+  package), plus two more in `cl-process-kit.asd` (`cl-process-kit` and
+  `cl-process-kit/test`) -- six places a release has to remember to bump in
+  lockstep, with no build-time check that they agree. `nerima-lisp/cl-boundary-kit`
+  v0.6.0 already fixed the identical problem in its own `flake.nix` (found
+  while auditing this project's own environment setup for the same class
+  of drift); ported the same technique here: a `version` `let` binding
+  parses the `:version` form out of `cl-process-kit.asd` line-by-line
+  (Nix's `builtins.match` is whole-string-anchored and `.` doesn't span
+  newlines, so a single multi-line regex doesn't work) and every Nix
+  package now `inherit`s it. A release now only ever edits the `.asd`.
+- `cl-process-kit/pty` and `cl-process-kit/pty-test` were missing the
+  `:version`/`:author`/`:maintainer`/`:license`/`:homepage`/`:bug-tracker`/
+  `:source-control` metadata the other two systems in the same file
+  already carry -- added it for consistency.
+
+### Production readiness
+
+- Added `SECURITY.md`, `SUPPORT.md`, and `CONTRIBUTING.md` (GitHub's
+  standard community-health filenames, which its UI surfaces automatically
+  regardless of README content) -- this repository had none, unlike sibling
+  `nerima-lisp` projects (`cl-weave` has all three). Scoped and sized for
+  this project specifically rather than copied verbatim: `SECURITY.md`
+  names the concrete classes of report that actually apply here (shell/
+  argument injection via `run-shell`/`make-command`, process-group
+  isolation failures, `spawn-native`'s privilege/credential handling), not
+  a generic template; `CONTRIBUTING.md` documents the coverage ratchet and
+  `nix flake check` as the authoritative (not just convenient) verification
+  step, matching how this project is actually developed and verified
+  throughout this changelog.
+
 ### CPS
 
 - `src/copier.lisp`'s `%drain-copiers` had a two-step "join within the

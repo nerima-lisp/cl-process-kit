@@ -53,11 +53,25 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
       sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
 
+      # Single source of truth for the package version: the `:version` form in
+      # cl-process-kit.asd. A release only ever edits the .asd file and every
+      # Nix package (default, pty, docs) follows automatically. Nix regexes are
+      # whole-string anchored and `.` never spans newlines, so the version is
+      # extracted line-by-line rather than with one multi-line match.
+      version =
+        let
+          lines = nixpkgs.lib.splitString "\n" (builtins.readFile ./cl-process-kit.asd);
+          versionLine = builtins.head (
+            builtins.filter (line: builtins.match "[[:space:]]*:version \"[^\"]*\"" line != null) lines
+          );
+        in
+        builtins.head (builtins.match "[[:space:]]*:version \"([^\"]*)\"" versionLine);
+
       mkDocs =
         pkgs:
         pkgs.stdenvNoCC.mkDerivation {
           pname = "cl-process-kit-docs";
-          version = "0.2.0";
+          inherit version;
           src = pkgs.lib.fileset.toSource {
             root = ./.;
             fileset = pkgs.lib.fileset.unions [
@@ -105,7 +119,7 @@
         rec {
           cl-process-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-process-kit";
-            version = "0.2.0";
+            inherit version;
             src = self;
             systems = [ "cl-process-kit" ];
             lispLibs = [
@@ -121,7 +135,7 @@
           };
           cl-process-kit-pty = pkgs.stdenv.mkDerivation {
             pname = "cl-process-kit-pty";
-            version = "0.2.0";
+            inherit version;
             src = self;
             nativeBuildInputs = [ pkgs.sbcl ];
             buildPhase = ''

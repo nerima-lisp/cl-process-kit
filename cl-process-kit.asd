@@ -57,6 +57,13 @@ across several sister projects into a single, reusable library."
 
 (asdf:defsystem "cl-process-kit/pty"
   :description "Optional native controlling-terminal PTY backend"
+  :version "0.2.0"
+  :author "nerima-lisp"
+  :maintainer "nerima-lisp"
+  :license "MIT"
+  :homepage "https://github.com/nerima-lisp/cl-process-kit"
+  :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
+  :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on ("cl-process-kit" "cl-tty-kit")
   :pathname "src"
   :serial t
@@ -66,6 +73,13 @@ across several sister projects into a single, reusable library."
 
 (asdf:defsystem "cl-process-kit/pty-test"
   :description "Integration tests for the optional PTY backend"
+  :version "0.2.0"
+  :author "nerima-lisp"
+  :maintainer "nerima-lisp"
+  :license "MIT"
+  :homepage "https://github.com/nerima-lisp/cl-process-kit"
+  :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
+  :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on ("cl-process-kit/pty" "cl-weave")
   :pathname "t"
   :serial t
