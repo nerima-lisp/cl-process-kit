@@ -20,7 +20,7 @@
       flake = false;
     };
     cl-log-kit = {
-      url = "github:nerima-lisp/cl-log-kit/v1.6.0";
+      url = "github:nerima-lisp/cl-log-kit/v1.0.0";
       flake = false;
     };
     cl-tty-kit = {

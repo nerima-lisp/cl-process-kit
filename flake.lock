@@ -20,16 +20,16 @@
     "cl-log-kit": {
       "flake": false,
       "locked": {
-        "lastModified": 1784970884,
-        "narHash": "sha256-s0QjIhisf3bLn79+BbYhdyHAxEITdszG0KzCXUkzRFg=",
+        "lastModified": 1784998499,
+        "narHash": "sha256-MY41YW9Lw2ZaB7cctcvl4vIXXGrsOF/tXPbl4mn3ix8=",
         "owner": "nerima-lisp",
         "repo": "cl-log-kit",
-        "rev": "6c7ce213299be69c40b116205957bb3dbffc30fa",
+        "rev": "53d1d81309e446afc805e0fe081628089223248b",
         "type": "github"
       },
       "original": {
         "owner": "nerima-lisp",
-        "ref": "v1.6.0",
+        "ref": "v1.0.0",
         "repo": "cl-log-kit",
         "type": "github"
       }
