@@ -69,10 +69,6 @@
         (expect (string= (process-result-stdout result) "tried") :to-be-truthy)
         (expect (eq result (communicate process)) :to-be-truthy))))
 
-  #+linux
-  (cl-weave:it-skip "rejects a concurrent communicate while capture is in progress"
-                    "known limitation: process-group/communicate timing is not guaranteed identical on Linux (see CHANGELOG)")
-  #-linux
   (it "rejects a concurrent communicate while capture is in progress"
     (let* ((process (spawn "/bin/sh" (list "-c" "sleep 0.2; printf finished") :output :stream :error :stream))
            (thread-result nil)
@@ -147,10 +143,6 @@
     (expect process-kit:*process-logger* :to-be nil)))
 
 (describe "process-group termination"
-  #+linux
-  (cl-weave:it-skip "kills descendants after the process-group leader exits on TERM"
-                    "known limitation: process-group/communicate timing is not guaranteed identical on Linux (see CHANGELOG)")
-  #-linux
   (it "kills descendants after the process-group leader exits on TERM"
     (let ((process (spawn "/bin/sh"
                           (list "-c" "trap \"exit 0\" TERM; (trap \"\" TERM; sleep 5) & wait")
@@ -169,10 +161,6 @@
     (with-process (process (%spawn-sleeping))
       (signals process-timeout-error (communicate process :timeout 0.1d0 :grace-period 0.1d0))))
 
-  #+linux
-  (cl-weave:it-skip "does not publicly signal a group after its leader is terminal"
-                    "known limitation: process-group/communicate timing is not guaranteed identical on Linux (see CHANGELOG)")
-  #-linux
   (it "does not publicly signal a group after its leader is terminal"
     (let ((process (spawn "/bin/sh" (list "-c" "(trap '' TERM; sleep 5) & exit 0"))))
       (unwind-protect
@@ -183,10 +171,6 @@
              (expect (process-kit::%process-group-alive-p process) :to-be-truthy))
         (close-process process :timeout 0.1))))
 
-  #+linux
-  (cl-weave:it-skip "provides distinct leader and group signal operations"
-                    "known limitation: process-group/communicate timing is not guaranteed identical on Linux (see CHANGELOG)")
-  #-linux
   (it "provides distinct leader and group signal operations"
     (let ((leader-only (spawn "/bin/sh" (list "-c" "(trap '' TERM; sleep 5) & wait"))))
       (unwind-protect
@@ -203,10 +187,6 @@
       (process-wait whole-group)
       (expect (process-alive-p whole-group) :to-be nil)))
 
-  #+linux
-  (cl-weave:it-skip "close-process cleans descendants more than five seconds after their leader exits"
-                    "known limitation: process-group/communicate timing is not guaranteed identical on Linux (see CHANGELOG)")
-  #-linux
   (it "close-process cleans descendants more than five seconds after their leader exits"
     (let ((process (spawn "/bin/sh" (list "-c" "(trap \"\" TERM; sleep 30) & exit 0"))))
       (unwind-protect
@@ -221,11 +201,11 @@
 (describe "spawn input validation"
   (it "rejects unsafe spawn strings and environments"
     (signals process-launch-error (spawn (format nil "/bin/true~Cbad" #\Null) nil))
-    (signals process-launch-error (spawn "/bin/true" (list (format nil "bad~Carg" #\Null))))
-    (signals process-launch-error (spawn "/bin/true" nil :environment (list "MALFORMED")))
-    (signals process-launch-error (spawn "/bin/true" nil :environment (list "=value")))
-    (signals process-launch-error (spawn "/bin/true" nil :environment (list "A=1" "A=2")))
-    (signals process-launch-error (spawn "/bin/true" nil :environment (list (format nil "A=bad~Cvalue" #\Null)))))
+    (signals process-launch-error (spawn (%true-program) (list (format nil "bad~Carg" #\Null))))
+    (signals process-launch-error (spawn (%true-program) nil :environment (list "MALFORMED")))
+    (signals process-launch-error (spawn (%true-program) nil :environment (list "=value")))
+    (signals process-launch-error (spawn (%true-program) nil :environment (list "A=1" "A=2")))
+    (signals process-launch-error (spawn (%true-program) nil :environment (list (format nil "A=bad~Cvalue" #\Null)))))
 
   (it "rejects unsafe command environment updates"
     (signals error (make-command "/bin/true" nil :environment-update (list (cons "A=B" "value"))))

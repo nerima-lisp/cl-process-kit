@@ -22,6 +22,37 @@ independently-reported case, not one aggregate pass/fail), and
 one-operator mutation of the live function body, not just execute every
 line -- coverage alone cannot prove that).
 
+## Running the suite on both platforms
+
+The suite runs identically on macOS and Linux — the same 179 tests, with no
+platform-conditional skips. Keeping it that way is worth some effort, because
+process semantics diverge exactly where this library works: signal delivery,
+process-group reaping, and whether closing a descriptor interrupts a thread
+already blocked reading it (macOS/BSD do; Linux does not). Divergences here
+have twice been invisible on one platform while broken on the other — see
+1.0.0's `### Correctness` notes in the [changelog](changelog.md).
+
+Two habits follow from that. Never name a program a guard-clause test does
+not intend to execute: `/bin/true` does not exist on macOS, so a
+`(signals error (run "/bin/true" ... :bad-option))` there passes on the
+launch failure whether or not the guard exists. Resolve fixtures through
+`PATH` with the `%true-program`/`%spawn-sleeping` helpers in `t/package.lisp`
+instead. And prefer fixing a platform difference over skipping the test that
+catches it — a `#+linux it-skip` hides the failure from CI without making the
+library any less broken there.
+
+CI runs Linux. To check locally before pushing, run the suite in a container:
+
+```sh
+docker run --rm -v "$PWD/..":/src -w /src/cl-process-kit \
+  -e CL_SOURCE_REGISTRY="/src//" clfoundation/sbcl:2.6.1-bookworm \
+  sh -c 'cc -O2 -o /tmp/spawn native/spawn.c &&
+         CL_PROCESS_KIT_SPAWN=/tmp/spawn sbcl --script run-tests.lisp'
+```
+
+This assumes the sibling `nerima-lisp` dependency checkouts live alongside
+this one, which is what mounting the parent directory as `/src` provides.
+
 ## Testing the PTY backend
 
 `nix flake check` runs `checks.pty-tests` alongside the core suite, so it

@@ -111,6 +111,8 @@ bookkeeping that RUN-PIPELINE's worker thread wraps around it."
                                  (on-cancel :error) (max-output-characters +default-output-limit+))
   (%ensure (and (consp commands) (every #'command-p commands))
            "COMMANDS must be a non-empty proper list of command specifications.")
+  (%validate-outcome-policy 'on-timeout on-timeout)
+  (%validate-outcome-policy 'on-cancel on-cancel)
   (flet ((clock () (/ (get-internal-real-time) internal-time-units-per-second)))
     (let* ((started (clock))
            (count (length commands))

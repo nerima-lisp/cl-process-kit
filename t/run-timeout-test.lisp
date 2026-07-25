@@ -77,16 +77,33 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (expect (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 2) :to-be-truthy)))
 
   (it "run rejects invalid timeout controls before spawning"
-    (signals error (run "/bin/true" nil :on-timeout :invalid))
-    (signals error (run "/bin/true" nil :poll-interval 0))
-    (signals error (run "/bin/true" nil :poll-interval -1))
-    (signals error (run "/bin/true" nil :timeout -1))
-    (signals error (run "/bin/true" nil :grace-period -1))
-    (signals error (run "/bin/true" nil :drain-timeout-seconds -1))
-    (signals error (run "/bin/true" nil :timeout-signal 0))
-    (signals error (run "/bin/true" nil :timeout-signal 999))
-    (signals error (run "/bin/true" nil :kill-signal 0))
-    (signals error (run "/bin/true" nil :kill-signal 999)))
+    (signals error (run (%true-program) nil :on-timeout :invalid))
+    (signals error (run (%true-program) nil :poll-interval 0))
+    (signals error (run (%true-program) nil :poll-interval -1))
+    (signals error (run (%true-program) nil :timeout -1))
+    (signals error (run (%true-program) nil :grace-period -1))
+    (signals error (run (%true-program) nil :drain-timeout-seconds -1))
+    (signals error (run (%true-program) nil :timeout-signal 0))
+    (signals error (run (%true-program) nil :timeout-signal 999))
+    (signals error (run (%true-program) nil :kill-signal 0))
+    (signals error (run (%true-program) nil :kill-signal 999)))
+
+  ;; Every entry point resolves these two policies by comparing against :ERROR
+  ;; and treating anything else as :RETURN, so an unguarded typo does not fail
+  ;; loudly -- it downgrades the call to "return the result quietly" and
+  ;; swallows the timeout or cancellation the caller asked to have signalled.
+  ;; RUN, RUN-COMMAND and RUN-PIPELINE also hand COMMUNICATE a hardcoded
+  ;; :ON-TIMEOUT :RETURN, so COMMUNICATE's own guard never sees the value the
+  ;; caller passed and cannot catch this for them.
+  (it "every entry point rejects an unrecognised outcome policy rather than reading it as :return"
+    (let ((true-command (make-command (%true-program) nil)))
+      (signals error (run (%true-program) nil :on-cancel :invalid))
+      (signals error (run-command true-command :on-timeout :invalid))
+      (signals error (run-command true-command :on-cancel :invalid))
+      (signals error (run-pipeline (list true-command) :on-timeout :invalid))
+      (signals error (run-pipeline (list true-command) :on-cancel :invalid))
+      (with-process (process (spawn (%true-program) nil :output :stream :error :stream))
+        (signals error (communicate process :on-cancel :invalid)))))
 
   (it "timeout errors retain a partial result without printing arguments"
     (handler-case
@@ -99,19 +116,13 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
           (expect (process-result-timed-out-p result) :to-be-truthy)
           (expect (string= (process-result-stdout result) "partial") :to-be-truthy)))))
 
-  ;; %drain-copiers force-closes the blocked stream to unstick the reader
-  ;; thread once drain-timeout-seconds elapses. That reliably interrupts a
-  ;; concurrent blocking read on macOS/BSD, but Linux gives no such
-  ;; guarantee: close() on one thread's fd does not by itself wake a
-  ;; different thread parked in read() on that fd, so the reader only
-  ;; returns once the still-alive backgrounded descendant actually exits
-  ;; or closes its inherited copy. Tracked as a known limitation (see
-  ;; CHANGELOG.md); skip rather than flake red on every Linux CI run until
-  ;; the copier read loop is redesigned around non-blocking I/O.
-  #+linux
-  (cl-weave:it-skip "run returns boundedly when an exited leader leaves a pipe-holding descendant"
-                    "known limitation: close() does not interrupt a concurrent blocking read on Linux")
-  #-linux
+  ;; The copier read loop waits via poll(2) and checks %DRAIN-COPIERS' stop
+  ;; flag between turns, so the drain deadline is enforced by the reader
+  ;; itself. This used to be skipped on Linux, back when the drain instead
+  ;; force-closed the stream and relied on that waking a thread already parked
+  ;; in read() -- which macOS/BSD do and Linux does not, leaving the reader
+  ;; parked until the backgrounded descendant below finally released the pipe.
+  ;; Nothing platform-specific is left to interrupt, so this runs everywhere.
   (it "run returns boundedly when an exited leader leaves a pipe-holding descendant"
     (let* ((started (get-internal-real-time))
            (result (run "/bin/sh" (list "-c" "sleep 5 & exit 0") :drain-timeout-seconds 0.1))

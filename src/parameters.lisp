@@ -11,6 +11,22 @@
 (defparameter +default-poll-interval+ 0.01d0
   "Default interval, in seconds, between deadline/liveness polls.")
 
+(defparameter +copier-poll-interval-milliseconds+
+  (round (* 1000 +default-poll-interval+))
+  "POLL(2) timeout, in milliseconds, for one turn of a copier thread's read
+loop -- +DEFAULT-POLL-INTERVAL+ in the unit POLL(2) takes. It bounds how long
+a copier can stay parked before it notices %DRAIN-COPIERS has asked it to
+stop, so it is also the granularity of DRAIN-TIMEOUT-SECONDS. Deliberately
+the same cadence COMMUNICATE's own deadline loop already wakes at, so an
+interruptible copier costs no wakeup rate the library was not already paying.")
+
+(defparameter +copier-stop-grace-seconds+ 0.25d0
+  "How long %DRAIN-COPIERS waits for a copier to honour a cooperative stop
+before escalating to force-closing its stream. Generous against
++COPIER-POLL-INTERVAL-MILLISECONDS+ (one poll turn plus the one bounded
+READ(2) that may follow it), because reaching the force-close stage trades a
+clean stop for a descriptor closed under a live reader.")
+
 (defparameter +default-output-limit+ 1048576
   "Default MAX-OUTPUT-CHARACTERS: 1 MiB of captured output per stream.")
 

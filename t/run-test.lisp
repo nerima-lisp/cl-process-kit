@@ -113,10 +113,10 @@
     (signals error (run "cat" nil :input t :search t)))
 
   (it "run rejects a clock that does not implement the CL-BOUNDARY-KIT protocol"
-    (signals error (run "/bin/true" nil :clock :not-a-clock)))
+    (signals error (run (%true-program) nil :clock :not-a-clock)))
 
   (it "run rejects a sleeper that does not implement the CL-BOUNDARY-KIT protocol"
-    (signals error (run "/bin/true" nil :sleeper :not-a-sleeper)))
+    (signals error (run (%true-program) nil :sleeper :not-a-sleeper)))
 
   (it "run-shell executes a command through the shell"
     (let ((result (run-shell "printf shell")))

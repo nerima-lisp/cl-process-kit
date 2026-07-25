@@ -41,6 +41,7 @@ or the :OUTPUT (merge-into-stdout) marker."
            "OUTPUT must be :CAPTURE, :INHERIT, or a stream.")
   (%ensure (or (%valid-run-output-policy-p error-policy) (eq error-policy :output))
            "ERROR must be :CAPTURE, :OUTPUT, :INHERIT, or a stream.")
+  (%validate-outcome-policy 'on-timeout on-timeout)
   (let* ((effective-environment (or environment (copy-list (sb-ext:posix-environ))))
          (process (spawn command arguments
                           :search search :input (and input :stream)
@@ -70,7 +71,11 @@ or the :OUTPUT (merge-into-stdout) marker."
 
 (defun run (command arguments &rest options)
   (let ((*current-cancellation-token* (getf options :cancellation-token))
-        (*current-on-cancel* (if (member :on-cancel options :test #'eq) (getf options :on-cancel) :error)))
+        (*current-on-cancel* (%validate-outcome-policy
+                              'on-cancel
+                              (if (member :on-cancel options :test #'eq)
+                                  (getf options :on-cancel)
+                                  :error))))
     (apply *run-without-cancellation* command arguments
            (%plist-without options '(:cancellation-token :on-cancel)))))
 
@@ -88,6 +93,8 @@ or the :OUTPUT (merge-into-stdout) marker."
                                (on-cancel :error) (max-output-characters +default-output-limit+)
                                (drain-timeout-seconds +default-drain-timeout-seconds+))
   (check-type command command-spec)
+  (%validate-outcome-policy 'on-timeout on-timeout)
+  (%validate-outcome-policy 'on-cancel on-cancel)
   (with-process (process (spawn-command command :stdin (if input :pipe nil)))
     (let ((result (communicate process :input input :timeout timeout :grace-period grace-period
                                         :on-timeout :return :on-cancel :return

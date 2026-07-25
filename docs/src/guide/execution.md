@@ -25,16 +25,43 @@ instead of being inspected on the result.
     to `run-command` in the source but returns a task rather than blocking
     — see [Asynchronous Execution](async.md#run-command-async).
 
-## Options shared across the family
+## Timeout and cleanup deadlines
 
-Omit `timeout` to run without a deadline.
+Omit `timeout` to run without a deadline. With one, a child that outlives it
+is escalated against rather than merely abandoned, and every stage of that
+escalation is bounded:
+
+| Option | Default | Bounds |
+| --- | --- | --- |
+| `timeout` | `nil` | How long the child may run before escalation begins. |
+| `timeout-signal` | `15` (`SIGTERM`) | The signal sent to the child's **process group** when `timeout` expires. |
+| `grace-period` | `1.0` | How long the group has to exit under `timeout-signal` before `kill-signal` follows. |
+| `kill-signal` | `9` (`SIGKILL`) | The signal that ends the escalation. |
+| `drain-timeout-seconds` | `1.0` | How long output is still drained after the child is reaped. |
+| `poll-interval` | `0.01` | How often the deadline and liveness loops wake. |
+
+Signals go to the whole process group, not just the child, which is why a
+timeout reaches everything the child forked. `drain-timeout-seconds` is a
+separate deadline because reaping the child does not necessarily close its
+output: a descendant that outlives it — `sh -c "worker & exit 0"` — inherits
+the same pipe and holds it open. Draining stops when that deadline passes,
+with whatever was captured by then; the alternative is waiting on a
+descendant that may never exit. Both deadlines hold on every supported
+platform, and the suite asserts it on macOS and Linux alike.
+
+`on-timeout` decides what a timeout produces: `:error` (the default) signals
+[`process-timeout-error`](../reference/results-and-conditions.md), while
+`:return` returns the partial `process-result` with
+`process-result-timed-out-p` set. Any other value is rejected — it is not
+silently taken as `:return`.
+
+## Options shared across the family
 
 `output` controls where stdout goes: `:capture` (the default) collects it
 into the `process-result`, `:inherit` lets the child write straight to this
 process's own stdout for live, uncaptured output, and a stream sends it
 there. `error` accepts the same three values for stderr, plus `:output`,
-which merges stderr into wherever stdout goes. `on-timeout` is `:error` or
-`:return`.
+which merges stderr into wherever stdout goes.
 
 `fd-limit`, if given, temporarily lowers this process's own `RLIMIT_NOFILE`
 soft limit around the spawn (restored immediately afterward) — the spawned

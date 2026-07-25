@@ -2,7 +2,114 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.0.0] - 2026-07-26
+
+First stable release. The exported API is unchanged from 0.2.0 and is now
+covered by semantic versioning; what this release adds is the evidence that
+it behaves the same way on every platform it claims to support. The suite
+now runs identically on macOS and Linux -- 179 tests, no platform skips --
+and the `### Known Limitations` recorded under 0.1.0 are resolved rather
+than carried forward.
+
+### Correctness
+
+- **`drain-timeout-seconds` is now honoured on Linux.** A copier thread
+  drained a child's stdout/stderr with a blocking `read(2)`, and
+  `%drain-copiers` unstuck one that overran its deadline by force-closing
+  the stream under it. Closing a descriptor wakes a thread already parked
+  in `read(2)` on macOS/BSD, but that is a BSD courtesy rather than
+  anything POSIX promises, and Linux does not do it: the reader stayed
+  parked until whoever else held the pipe's write end let go. After
+  `sh -c "sleep 5 & exit 0"` that is a backgrounded descendant which
+  outlives the leader by design, so the wait was effectively unbounded.
+  The observed symptom on Linux was worse than 0.1.0's note described --
+  not merely `run` overrunning its documented bound, but `run` *signalling*
+  `process-io-error :cleanup` ("Copier thread did not terminate after its
+  stream was closed") once the force-close failed to land.
+
+  The read loop now waits with `poll(2)` on a bounded timeout and checks a
+  stop flag between turns (`%await-fd-readable`), so the decision to give up
+  is taken by the reader itself instead of being inflicted on it through the
+  descriptor. The bound then holds by construction on any POSIX platform
+  rather than by accident on some. The flag is checked *before* readiness,
+  which bounds the loop even against a child that never stops producing:
+  one poll interval plus one bounded `read(2)` per turn. Polling costs no
+  wakeup rate the library was not already paying, since `communicate`'s own
+  deadline loop already runs at `+default-poll-interval+`.
+
+  `%drain-copiers`' escalation gained the cooperative stop as its first
+  rung -- ask, then force-close, then signal -- ordered by what each costs
+  when it fires, in the same continuation-passing shape as
+  `escalate-unless-gone`'s SIGTERM -> SIGKILL -> give-up. Force-closing is
+  now a fallback for a copier parked where a flag cannot reach it (a
+  `read-sequence` on a non-fd stream) rather than the primary mechanism.
+  `%communicate-base`'s cleanup path was reordered to match: it retires the
+  copiers before their streams, so `close-process-streams` no longer closes
+  a descriptor under a live reader on every pass -- a descriptor the OS is
+  free to reissue the moment it is closed.
+
+- **`:on-timeout` and `:on-cancel` are validated at the entry points that
+  own them.** Every entry point resolves these by comparing against
+  `:error` and treating anything else as `:return`, which made an
+  unrecognised value indistinguishable from a deliberate `:return` instead
+  of an error. `run`, `run-command` and `run-pipeline` compounded it: each
+  hands `communicate` a hardcoded `:on-timeout :return` and decides for
+  itself whether to signal, so `%validate-communication-options`' guard
+  never saw what the caller wrote. A misspelt `:errror` therefore read as
+  `:return` and silently swallowed the very timeout or cancellation the
+  caller had asked to have signalled. `%validate-outcome-policy` now guards
+  each policy where it is accepted -- `run` (`:on-timeout`, `:on-cancel`),
+  `run-command` (both), `run-pipeline` (both), and `communicate`
+  (`:on-cancel`, which had no guard either).
+
+### Testing
+
+- The seven tests skipped on Linux as "known limitations" -- the
+  drain-timeout regression test plus the `process-group termination`,
+  `communicate result caching` and `communicate-async events` cases -- all
+  pass there now. They shared the drain-timeout root cause: each parks a
+  copier on a pipe held open by a descendant, so each inherited the same
+  uninterruptible read. The skips and their `#+linux`/`#-linux` guards are
+  gone; the suite is 179 tests on both platforms.
+
+- **A guard-clause test that names a program which does not exist proves
+  nothing.** `t/run-timeout-test.lisp`'s "run rejects invalid timeout
+  controls before spawning" spawned `/bin/true`, which macOS does not ship
+  (`true` lives in `/usr/bin` there). All ten of its assertions passed on a
+  `process-launch-error` for the missing file -- identically, and just as
+  green, whether or not the guard under test existed. That is what hid the
+  `:on-timeout` gap above: the assertion only had to mean something once
+  the suite was first run on Linux, where `/bin/true` does exist. A
+  `%true-program` fixture now resolves `true` through the ambient `PATH`,
+  matching the existing `%spawn-sleeping` fixture, and is used by the 17
+  call sites that actually spawn. The remaining literal `/bin/true`
+  occurrences are in `make-command` data tables that never spawn, where the
+  string is inert.
+
+- Added a regression test asserting that all four entry points reject an
+  unrecognised outcome policy rather than reading it as `:return`.
+
+- Coverage ratchet advanced to 87.4% expression / 81.5% branch (from
+  87.0/79.5), the level the un-skipped tests now reach.
+
+### Documentation
+
+- Documented the timeout and cleanup deadlines. `grace-period`,
+  `poll-interval`, `timeout-signal`, `kill-signal` and
+  `drain-timeout-seconds` previously appeared only inside `run`'s signature
+  in the options table -- five knobs with no stated meaning or default,
+  covering the escalation behaviour that is the library's whole reason to
+  exist. The execution guide now gives them a table of their own, explains
+  why signals go to the process group rather than the child, and explains
+  why draining has a deadline separate from the child's (a descendant that
+  outlives the leader inherits the same pipe and can hold it open
+  indefinitely).
+
+- Added a "Running the suite on both platforms" section to the development
+  guide, covering the container invocation for checking Linux behaviour
+  locally, and the two habits this release's bugs argue for: never name a
+  program a guard-clause test does not intend to execute, and prefer fixing
+  a platform difference to skipping the test that catches it.
 
 ### Build/environment
 

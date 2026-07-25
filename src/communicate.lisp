@@ -9,6 +9,23 @@
 
 (in-package #:process-kit)
 
+(defun %validate-outcome-policy (name policy)
+  "Guard one :ON-TIMEOUT/:ON-CANCEL policy, NAME naming it in the message.
+
+Every entry point resolves these policies the same way -- compare against
+:ERROR, treat anything else as :RETURN -- which makes an unrecognised value
+indistinguishable from a deliberate :RETURN rather than an error. RUN,
+RUN-COMMAND and RUN-PIPELINE then compound it: each hands COMMUNICATE a
+hardcoded :ON-TIMEOUT :RETURN and decides for itself whether to signal, so the
+guard inside %VALIDATE-COMMUNICATION-OPTIONS never sees what the caller
+actually wrote. Guarding at the point the policy is accepted is what stops a
+misspelt :ERRROR from reading as :RETURN and silently swallowing the very
+timeout or cancellation the caller asked to have signalled.
+
+Returns POLICY, so a caller that resolves one can guard it in passing."
+  (%ensure (member policy '(:return :error) :test #'eq) "~A must be :RETURN or :ERROR." name)
+  policy)
+
 (defun %validate-communication-options
     (input timeout grace-period poll-interval timeout-signal kill-signal on-timeout
      max-output-characters drain-timeout-seconds result-type decoding-error-policy
@@ -23,7 +40,7 @@
   (%ensure (and (integerp timeout-signal) (<= 1 timeout-signal 31)
                 (integerp kill-signal) (<= 1 kill-signal 31))
            "Signals must be integers between 1 and 31.")
-  (%ensure (member on-timeout '(:return :error) :test #'eq) "ON-TIMEOUT must be :RETURN or :ERROR.")
+  (%validate-outcome-policy 'on-timeout on-timeout)
   (%ensure (or (null max-output-characters)
                (and (integerp max-output-characters) (not (minusp max-output-characters))))
            "MAX-OUTPUT-CHARACTERS must be NIL or a non-negative integer.")
@@ -148,9 +165,14 @@ passed in rather than hard-coded here."
                  (error 'process-timeout-error :command nil :arguments nil :timeout timeout :result cached-result))
                cached-result))
         (unless completed-p (%abort-communication process) (terminate-and-reap))
-        (ignore-errors (close-process-streams process))
-        (dolist (entry copier-entries) (ignore-errors (%close-stream-for-copier (car entry) (cdr entry))))
-        (ignore-errors (%drain-copiers copier-entries drain-timeout-seconds clock-fn))))))
+        ;; Retire the copiers before their streams, not after. Asking them to
+        ;; stop and letting %DRAIN-COPIERS escalate leaves CLOSE-PROCESS-STREAMS
+        ;; closing descriptors nobody is reading; closing first, as this used
+        ;; to, made every cleanup pass race a live reader against a descriptor
+        ;; the OS is free to reissue the moment it is closed.
+        (dolist (entry copier-entries) (%request-copier-stop (cdr entry)))
+        (ignore-errors (%drain-copiers copier-entries drain-timeout-seconds clock-fn))
+        (ignore-errors (close-process-streams process))))))
 
 (defvar *current-cancellation-token* nil)
 (defvar *current-on-cancel* :error)
@@ -168,7 +190,11 @@ COMMUNICATE-ASYNC bound around this call, if any) using a watcher thread
 that escalates SIGTERM -> SIGKILL on cancellation, mirroring the timeout
 escalation %COMMUNICATE-BASE already performs."
   (let* ((token (or (getf options :cancellation-token) *current-cancellation-token*))
-         (on-cancel (if (member :on-cancel options :test #'eq) (getf options :on-cancel) *current-on-cancel*))
+         (on-cancel (%validate-outcome-policy
+                     'on-cancel
+                     (if (member :on-cancel options :test #'eq)
+                         (getf options :on-cancel)
+                         *current-on-cancel*)))
          (grace-period (or (getf options :grace-period) 1.0d0))
          (state-lock (sb-thread:make-mutex :name "process-kit cancellation state"))
          (done-p nil)

@@ -32,9 +32,9 @@
 
 (require :asdf)
 
-(defparameter +minimum-expression-coverage+ 87.0
+(defparameter +minimum-expression-coverage+ 87.4
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
-(defparameter +minimum-branch-coverage+ 79.5
+(defparameter +minimum-branch-coverage+ 81.5
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()
