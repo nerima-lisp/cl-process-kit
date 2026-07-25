@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### CPS
+
+- `src/copier.lisp`'s `%drain-copiers` had a two-step "join within the
+  remaining time; if that times out, force-close the stream and give it
+  one more brief join" escalation inlined as nested `when`s. Extracted
+  `%join-copier-unless-timed-out (copier timeout on-timeout)`, which calls
+  the `on-timeout` continuation only if the join actually times out --
+  the same shape as `communicate.lisp`'s `escalate-unless-gone`, applied
+  one level down at the copier-thread join instead of the process-group
+  signal escalation. `%drain-copiers`'s two-step escalation is now two
+  nested calls to it instead of two nested `when`s, matching this
+  codebase's established `call-with-X`/continuation-parameter idiom.
+
 ### Correctness
 
 - `src/copier.lisp`'s `%join-copier` accepted an `&optional timeout` and, if
@@ -118,6 +131,40 @@ All notable changes to this project will be documented in this file.
   local run passing while the authoritative sandboxed check does not.
   Fixed by switching `cl-tty-kit`'s input to
   `git+https://github.com/nerima-lisp/cl-tty-kit?ref=refs/tags/v0.6.0&submodules=1`.
+
+### Documentation
+
+- Audited every public function signature documented in `README.md` and
+  `docs/src/guide/*.md` against the actual `&key` lists in `src/run.lisp`,
+  `src/spawn.lisp`, and `src/communicate.lisp` (plus the condition
+  hierarchy in `src/conditions.lisp`, the `process-result`/`pipeline-result`
+  structs in `src/types.lisp`, and the PTY/event/task accessors in
+  `src/pty.lisp`/`src/async-events.lisp`/`src/async-task.lisp`, which were
+  already accurate). Found `run`'s `output` keyword (`%run-base`) -- the
+  stdout counterpart of `error`'s policy, controlling whether stdout is
+  `:capture`d, `:inherit`ed live, or sent to a stream -- completely
+  undocumented, even though it has been part of the public API since the
+  `[0.1.0]` entry below; `error`'s own accepted values were also
+  under-described (listed only `:capture`/`:output`, omitting `:inherit`
+  and stream targets that `%valid-run-output-policy-p` also accepts). Also
+  found `README.md`'s `run`/`communicate` signatures missing
+  `decoding-error-policy` and `docs/src/guide/execution.md`'s `run`
+  signature and `docs/src/guide/async.md`'s `spawn` signature missing
+  `fd-limit` -- each doc had independently drifted to cover only the
+  option added most recently in its own edit history. Fixed all of these
+  in `docs/src/guide/execution.md` and `docs/src/guide/async.md`, which
+  remain the single authoritative reference (see the next entry for why
+  `README.md` no longer duplicates them).
+- `README.md` had grown a ~450-line "API" section duplicating the option
+  reference already maintained on the MkDocs site (`docs/src/guide/*.md`,
+  `docs/src/reference/results-and-conditions.md`) -- the exact duplication
+  responsible for the signatures drifting out of sync in the entry above,
+  and for the site's own "Native spawn trampoline" page having no README
+  counterpart at all. Simplified `README.md` to a landing page (intro,
+  install, one minimal usage example, links to the published docs) and
+  removed the API section and the Development section's test-suite/
+  source-layout breakdown entirely, leaving `docs/src/` as the only place
+  a signature or option list is written down.
 
 ## [0.2.0]
 

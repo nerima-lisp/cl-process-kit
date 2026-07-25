@@ -10,10 +10,16 @@ hand.
 
 ```lisp
 spawn (command arguments &key search input output error environment
-       directory external-format status-hook preserve-fds) -> process-handle
+       directory external-format status-hook preserve-fds fd-limit) -> process-handle
 
 spawn-command (command-spec &key stdin stdout stderr) -> process-handle
 ```
+
+`fd-limit`, if given, temporarily lowers this process's own `RLIMIT_NOFILE`
+soft limit around the spawn (restored immediately afterward) — the spawned
+child inherits the lower limit through `exec`. See [Synchronous
+Execution](execution.md#options-shared-across-the-family) for why this
+matters.
 
 Streams exposed by `spawn` or `spawn-command` are the caller's
 responsibility until ownership is handed to `communicate`. `communicate`,

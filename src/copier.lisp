@@ -83,6 +83,15 @@ non-positive) before the thread finishes."
   (when copier (setf (%copier-forced-close-p copier) t))
   (when stream (close stream :abort t)))
 
+(defun %join-copier-unless-timed-out (copier timeout on-timeout)
+  "Join COPIER within TIMEOUT seconds; call the ON-TIMEOUT continuation only
+if it has not finished by then. Expresses %DRAIN-COPIERS' force-close
+escalation as a continuation, the same call-with-X-style idiom
+ESCALATE-UNLESS-GONE (communicate.lisp) uses for the SIGTERM->SIGKILL
+escalation this mirrors at the copier-thread level."
+  (when (and copier (eq (%join-copier copier timeout) :timed-out))
+    (funcall on-timeout)))
+
 (defun %drain-copiers (entries drain-timeout clock-fn)
   (let* ((timeout (or drain-timeout +default-drain-timeout-seconds+))
          (deadline (+ (funcall clock-fn) timeout))
@@ -91,10 +100,13 @@ non-positive) before the thread finishes."
       (let* ((stream (car entry))
              (copier (cdr entry))
              (remaining (max 0 (- deadline (funcall clock-fn)))))
-        (when (and copier (eq (%join-copier copier remaining) :timed-out))
-          (%close-stream-for-copier stream copier)
-          (when (eq (%join-copier copier +default-poll-interval+) :timed-out)
-            (setf cleanup-failure copier)))))
+        (%join-copier-unless-timed-out
+         copier remaining
+         (lambda ()
+           (%close-stream-for-copier stream copier)
+           (%join-copier-unless-timed-out
+            copier +default-poll-interval+
+            (lambda () (setf cleanup-failure copier)))))))
     (when cleanup-failure
       (error 'process-io-error
              :stream :cleanup

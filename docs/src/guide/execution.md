@@ -5,7 +5,7 @@ finishes (or its deadline fires) and hand back a `process-result`.
 
 | Function | Input | Signature |
 | --- | --- | --- |
-| `run` | program + argument list | `(command arguments &key search input environment directory error timeout grace-period poll-interval timeout-signal kill-signal on-timeout max-output-characters drain-timeout-seconds result-type external-format decoding-error-policy clock sleeper cancellation-token on-cancel)` → `process-result` |
+| `run` | program + argument list | `(command arguments &key search input environment directory output error timeout grace-period poll-interval timeout-signal kill-signal on-timeout max-output-characters drain-timeout-seconds result-type external-format decoding-error-policy clock sleeper cancellation-token on-cancel fd-limit)` → `process-result` |
 | `run/checked` | program + argument list | `(command arguments &rest options)` → `process-result`, same options as `run` |
 | `run-shell` | shell command string | `(command &rest options)` → `process-result`, runs through `/bin/sh -c`, same options as `run` |
 | `run-command` | `command-spec` | `(command-spec &key input timeout grace-period on-timeout cancellation-token on-cancel max-output-characters drain-timeout-seconds)` → `process-result` |
@@ -29,8 +29,20 @@ instead of being inspected on the result.
 
 Omit `timeout` to run without a deadline.
 
-`error` is either `:capture` (separate stderr) or `:output` (merge stderr
-into stdout). `on-timeout` is `:error` or `:return`.
+`output` controls where stdout goes: `:capture` (the default) collects it
+into the `process-result`, `:inherit` lets the child write straight to this
+process's own stdout for live, uncaptured output, and a stream sends it
+there. `error` accepts the same three values for stderr, plus `:output`,
+which merges stderr into wherever stdout goes. `on-timeout` is `:error` or
+`:return`.
+
+`fd-limit`, if given, temporarily lowers this process's own `RLIMIT_NOFILE`
+soft limit around the spawn (restored immediately afterward) — the spawned
+child inherits the lower limit through `exec`. On hosts with a very large
+ambient file-descriptor limit (routine under Nix/direnv shells), this
+measurably cuts spawn latency: the forked child otherwise closes every
+inherited descriptor up to that limit one syscall at a time. `nil` (the
+default) leaves the ambient limit untouched.
 
 `clock` and `sleeper` are `cl-boundary-kit` boundary objects (see
 `cl-boundary-kit:make-clock` and `cl-boundary-kit:make-sleeper`) that default
