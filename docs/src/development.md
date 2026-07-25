@@ -13,8 +13,14 @@ pinned dependencies.
 Beyond example-based `describe`/`it`/`expect` tests, the suite uses
 [`cl-weave`](https://github.com/nerima-lisp/cl-weave)'s `it-property` for
 value-space invariants (for example: `run` reports exactly the requested
-exit code for every code in `[0, 255]`) and `with-mocked-functions` for
-isolating slow or non-deterministic collaborators.
+exit code for every code in `[0, 255]`), `with-mocked-functions` for
+isolating slow or non-deterministic collaborators, `it-each` for
+table-driven guard-clause tests (each malformed-input row is its own
+independently-reported case, not one aggregate pass/fail), and
+`run-mutations`/`assert-mutation-score` for mutation testing
+(`process-success-p`/`pipeline-success-p`'s case battery must kill every
+one-operator mutation of the live function body, not just execute every
+line -- coverage alone cannot prove that).
 
 ## Testing the PTY backend
 
@@ -88,7 +94,8 @@ dependency/build footprint.
 - `logging-test.lisp` binds `*process-logger*` and checks the lifecycle
   records.
 - `validation-test.lisp` drives every `make-command`/`spawn-native` guard
-  clause from a data table plus the native decoders directly.
+  clause as a `cl-weave:it-each` table (one independently-reported case per
+  malformed-input row) plus the native decoders directly.
 - `native-spawn-test.lisp` covers [`spawn-native`](guide/native-spawn.md)'s
   Lisp-level launch and typed-error paths; `native-spawn-test.sh` is a
   standalone shell script (invoked directly by `nix flake check`, not
@@ -109,6 +116,10 @@ dependency/build footprint.
   generators (an octet round trip through `cat`, argument preservation, the
   NUL-rejection guard, the success predicate), which cl-weave shrinks to a
   minimal counterexample on failure.
+- `mutation-test.lisp` mutation-tests `process-success-p`/
+  `pipeline-success-p` with `cl-weave:run-mutations`, reading each `defun`
+  body live from `src/command.lisp` on every run so the case battery can
+  never silently drift out of sync with the implementation it is checking.
 
 ## Conventions
 

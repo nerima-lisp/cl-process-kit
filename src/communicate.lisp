@@ -194,30 +194,34 @@ escalation %COMMUNICATE-BASE already performs."
 the ON-TIMEOUT continuation only if it is still alive afterward. Expresses
 the watcher's SIGTERM -> SIGKILL -> give-up escalation as a chain of
 continuations instead of nested UNLESS forms."
-                 (unless (wait-for-group seconds) (funcall on-timeout))))
+                 (unless (wait-for-group seconds) (funcall on-timeout)))
+               (run-cancellation-watcher ()
+                 "The cancellation watcher thread's body: block until TOKEN is
+cancelled (or COMMUNICATE finishes first), then escalate SIGTERM -> SIGKILL
+against PROCESS's owned group exactly like %COMMUNICATE-BASE's own timeout
+escalation, recording any signalling failure for the main thread to re-raise."
+                 (loop until (or (finished-p) (cancellation-requested-p token))
+                       do (sleep +default-poll-interval+))
+                 (when (and (not (finished-p)) (cancellation-requested-p token))
+                   (mark-cancelled)
+                   (%log :warn "process cancelled, escalating" :pid (process-id process))
+                   (handler-case
+                       (when (%process-group-alive-p process)
+                         (signal-owned-group 15)
+                         (escalate-unless-gone
+                          grace-period
+                          (lambda ()
+                            (signal-owned-group 9)
+                            (escalate-unless-gone
+                             grace-period
+                             (lambda () (error "Owned process group remained alive after SIGKILL."))))))
+                     (error (condition)
+                       (record-watcher-error
+                        (make-condition 'process-io-error :stream :cleanup :cause condition)))))))
         (setf watcher
               (and token (not terminal-at-entry-p)
-                   (sb-thread:make-thread
-                    (lambda ()
-                      (loop until (or (finished-p) (cancellation-requested-p token))
-                            do (sleep +default-poll-interval+))
-                      (when (and (not (finished-p)) (cancellation-requested-p token))
-                        (mark-cancelled)
-                        (%log :warn "process cancelled, escalating" :pid (process-id process))
-                        (handler-case
-                            (when (%process-group-alive-p process)
-                              (signal-owned-group 15)
-                              (escalate-unless-gone
-                               grace-period
-                               (lambda ()
-                                 (signal-owned-group 9)
-                                 (escalate-unless-gone
-                                  grace-period
-                                  (lambda () (error "Owned process group remained alive after SIGKILL."))))))
-                          (error (condition)
-                            (record-watcher-error
-                             (make-condition 'process-io-error :stream :cleanup :cause condition))))))
-                    :name "process-kit cancellation watcher")))
+                   (sb-thread:make-thread #'run-cancellation-watcher
+                                          :name "process-kit cancellation watcher")))
         (unwind-protect
              (let ((*current-cancellation-token* token))
                (let ((result (apply *communicate-without-cancellation* process

@@ -494,9 +494,14 @@ dependencies.
 
 Beyond example-based `describe`/`it`/`expect` tests, the suite uses
 `cl-weave:it-property` for value-space invariants (for example: `run`
-reports exactly the requested exit code for every code in `[0, 255]`) and
+reports exactly the requested exit code for every code in `[0, 255]`),
 `cl-weave:with-mocked-functions` for isolating slow or non-deterministic
-collaborators.
+collaborators, `cl-weave:it-each` for table-driven guard-clause tests
+(each malformed-input row is its own independently-reported case, not one
+aggregate pass/fail), and `cl-weave:run-mutations`/`assert-mutation-score`
+for mutation testing (`process-success-p`/`pipeline-success-p`'s case
+battery must kill every one-operator mutation of the live function body,
+not just execute every line -- coverage alone cannot prove that).
 
 Set `CL_PROCESS_KIT_COVERAGE=1` to additionally recompile `src/` under
 SB-COVER instrumentation and print an expression/branch coverage report
@@ -534,15 +539,20 @@ covers `communicate-async`/`run-command-async`/the event cursor API.
 `conditions-test.lisp` asserts each condition's `:report` output;
 `logging-test.lisp` binds `*process-logger*` and checks the lifecycle records;
 `validation-test.lisp` drives every `make-command`/`spawn-native` guard clause
-from a data table plus the native decoders directly; and
+as a `cl-weave:it-each` table (one independently-reported case per
+malformed-input row) plus the native decoders directly;
 `edge-coverage-test.lisp` exercises the reachable branch edges the behavioral
 suites skip -- stream-valued `:input`, `process-wait` timeout expiry, the
 at-most-once `communicate` contract, UTF-8 surrogate/overlong replacement, and
 (via `cl-weave:with-mocked-functions` fault injection) copier-thread failure;
-and `property-test.lisp` states value-space laws with `cl-weave:it-property`
+`property-test.lisp` states value-space laws with `cl-weave:it-property`
 generators (an octet round trip through `cat`, argument preservation, the
 NUL-rejection guard, the success predicate), which cl-weave shrinks to a
-minimal counterexample on failure.
+minimal counterexample on failure; and `mutation-test.lisp` mutation-tests
+`process-success-p`/`pipeline-success-p` with `cl-weave:run-mutations`,
+reading each `defun` body live from `src/command.lisp` on every run so the
+case battery can never silently drift out of sync with the implementation
+it is checking.
 
 Argument validation across the library is written with the `%ensure` guard
 macro (the `assert`-style `(%ensure test control-or-class ...)` counterpart of
