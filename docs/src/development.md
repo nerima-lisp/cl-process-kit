@@ -82,7 +82,11 @@ dependency/build footprint.
 
 `t/` mirrors that split:
 
-- `run-test.lisp` covers `run`/`run-command`/cancellation.
+- `run-test.lisp` covers `run`/`run-command`'s non-timeout behavior
+  (environment/directory, stdio, output capture and encoding).
+- `run-timeout-test.lisp` covers timeout/SIGTERM->SIGKILL escalation and
+  cancellation-token handling, split out of `run-test.lisp` once it grew
+  past 380 lines across five thematically distinct suites.
 - `spawn-test.lisp` covers raw `spawn` process lifecycle, process-handle
   streams, `communicate` result caching, structured logging, process-group
   termination, input validation, and executable resolution.

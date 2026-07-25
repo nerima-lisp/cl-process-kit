@@ -532,10 +532,14 @@ and `communicate-async`/`await-process`/`cancel-process` entry points that
 drive it, the synchronous `run`/`run-command` entry points, and
 `run-pipeline`.
 
-`t/` mirrors that split: `run-test.lisp` covers `run`/`run-command`/
-cancellation, `process-handle-test.lisp` covers `process-handle` bookkeeping,
-`pipeline-test.lisp` covers `run-pipeline`, and `async-task-test.lisp`
-covers `communicate-async`/`run-command-async`/the event cursor API.
+`t/` mirrors that split: `run-test.lisp` covers `run`/`run-command`'s
+non-timeout behavior (environment/directory, stdio, output capture and
+encoding), `run-timeout-test.lisp` covers timeout/SIGTERM->SIGKILL
+escalation and cancellation-token handling (split out once `run-test.lisp`
+grew past 380 lines), `process-handle-test.lisp` covers `process-handle`
+bookkeeping, `pipeline-test.lisp` covers `run-pipeline`, and
+`async-task-test.lisp` covers `communicate-async`/`run-command-async`/the
+event cursor API.
 `conditions-test.lisp` asserts each condition's `:report` output;
 `logging-test.lisp` binds `*process-logger*` and checks the lifecycle records;
 `validation-test.lisp` drives every `make-command`/`spawn-native` guard clause

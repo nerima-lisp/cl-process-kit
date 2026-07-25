@@ -1,23 +1,11 @@
 ;;;; t/run-test.lisp
+;;;;
+;;;; RUN/RUN-COMMAND's non-timeout behavior: environment/directory handling,
+;;;; stdio policies, and output capture/encoding. Timeout/SIGTERM->SIGKILL
+;;;; escalation and cancellation-token handling live in
+;;;; run-timeout-test.lisp.
 
 (in-package #:cl-process-kit/test)
-
-(defun %make-jump-clock ()
-  "A CL-BOUNDARY-KIT clock boundary whose CLOCK-MONOTONIC reads 0 seconds on
-its first call and then jumps 1000 simulated seconds further into the future
-on every subsequent call. Each %POLL-UNTIL round-trip therefore observes its
-deadline as already passed -- whether that deadline was computed from an
-earlier or a later call -- so RUN never has to really wait out
-TIMEOUT-SECONDS or GRACE-PERIOD-SECONDS."
-  (let ((calls 0))
-    (cl-boundary-kit:make-clock
-     :monotonic-fn (lambda () (incf calls) (if (= calls 1) 0 (* calls 1000))))))
-
-(defun %counting-sleeper (counter)
-  "A CL-BOUNDARY-KIT sleeper boundary that never really sleeps, incrementing
-the car of COUNTER on every SLEEPER-SLEEP call instead."
-  (cl-boundary-kit:make-sleeper
-   :sleep-fn (lambda (seconds) (declare (ignore seconds)) (incf (car counter)) nil)))
 
 (describe "run-command"
   (it "run-command distinguishes an empty replacement environment"
@@ -194,109 +182,6 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
         (run/checked "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
                      :cancellation-token token :grace-period 0.1d0)))))
 
-(describe "run timeout and signal escalation"
-  (it "run with on-timeout :return sets timed-out-p on a real timeout"
-    (let ((result (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :return)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
-      (expect (process-success-p result) :to-be nil)))
-
-  (it "run with on-timeout :error signals process-timeout-error with the right slots"
-    (signals process-timeout-error
-      (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :error))
-    (handler-case
-        (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :error)
-      (process-timeout-error (e)
-        (expect (string= (process-timeout-error-command e) "/bin/sh") :to-be-truthy)
-        (expect (= (process-timeout-error-timeout e) 0.2) :to-be-truthy))))
-
-  (it "run escalates to SIGKILL when the child ignores SIGTERM"
-    (let ((result (run "/bin/sh" (list "-c" "trap '' TERM; sleep 5")
-                       :timeout 0.2 :grace-period 0.2 :on-timeout :return)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
-      (expect (= (process-result-signal result) 9) :to-be-truthy)))
-
-  (it "run's polling loop honors an injected CLOCK/SLEEPER without consuming real time"
-    (let* ((sleep-calls (list 0))
-           (started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "sleep 5")
-                       :timeout 1 :grace-period 1 :on-timeout :return
-                       :clock (%make-jump-clock)
-                       :sleeper (%counting-sleeper sleep-calls)))
-           (elapsed-seconds (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
-      ;; The fake clock reports the deadline as already passed on the very
-      ;; first check, so the sleeper is never invoked and no real waiting for
-      ;; TIMEOUT-SECONDS/GRACE-PERIOD-SECONDS happens.
-      (expect (= (car sleep-calls) 0) :to-be-truthy)
-      (expect (< elapsed-seconds 2) :to-be-truthy)))
-
-  (it "run times out a stopped child instead of waiting forever"
-    (let* ((started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "kill -STOP $$") :timeout 0.1 :grace-period 0.1 :on-timeout :return))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy)))
-
-  (it "run cleans up the child when CLOCK signals an error"
-    (let ((started (get-internal-real-time)))
-      (signals error
-        (run "/bin/sh" (list "-c" "sleep 5") :timeout 1
-             :clock (cl-boundary-kit:make-clock :monotonic-fn (lambda () (error "clock failed")))))
-      (expect (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 2) :to-be-truthy)))
-
-  (it "run rejects invalid timeout controls before spawning"
-    (signals error (run "/bin/true" nil :on-timeout :invalid))
-    (signals error (run "/bin/true" nil :poll-interval 0))
-    (signals error (run "/bin/true" nil :poll-interval -1))
-    (signals error (run "/bin/true" nil :timeout -1))
-    (signals error (run "/bin/true" nil :grace-period -1))
-    (signals error (run "/bin/true" nil :drain-timeout-seconds -1))
-    (signals error (run "/bin/true" nil :timeout-signal 0))
-    (signals error (run "/bin/true" nil :timeout-signal 999))
-    (signals error (run "/bin/true" nil :kill-signal 0))
-    (signals error (run "/bin/true" nil :kill-signal 999)))
-
-  (it "timeout errors retain a partial result without printing arguments"
-    (handler-case
-        (run "/bin/sh" (list "-c" "printf partial; sleep 5" "secret-argument")
-            :timeout 0.1 :grace-period 0.1 :on-timeout :error)
-      (process-timeout-error (condition)
-        (let ((result (process-timeout-error-result condition))
-              (report (princ-to-string condition)))
-          (expect (search "secret-argument" report) :to-be nil)
-          (expect (process-result-timed-out-p result) :to-be-truthy)
-          (expect (string= (process-result-stdout result) "partial") :to-be-truthy)))))
-
-  ;; %drain-copiers force-closes the blocked stream to unstick the reader
-  ;; thread once drain-timeout-seconds elapses. That reliably interrupts a
-  ;; concurrent blocking read on macOS/BSD, but Linux gives no such
-  ;; guarantee: close() on one thread's fd does not by itself wake a
-  ;; different thread parked in read() on that fd, so the reader only
-  ;; returns once the still-alive backgrounded descendant actually exits
-  ;; or closes its inherited copy. Tracked as a known limitation (see
-  ;; CHANGELOG.md); skip rather than flake red on every Linux CI run until
-  ;; the copier read loop is redesigned around non-blocking I/O.
-  #+linux
-  (cl-weave:it-skip "run returns boundedly when an exited leader leaves a pipe-holding descendant"
-                    "known limitation: close() does not interrupt a concurrent blocking read on Linux")
-  #-linux
-  (it "run returns boundedly when an exited leader leaves a pipe-holding descendant"
-    (let* ((started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "sleep 5 & exit 0") :drain-timeout-seconds 0.1))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (= (process-result-exit-code result) 0) :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy)))
-
-  (it "times out blocked large input and joins the stdin feeder"
-    (let* ((input (make-string (* 1024 1024) :initial-element #\x))
-           (started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
-                       :input input :timeout 0.1 :grace-period 0.1 :on-timeout :return))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
-      (expect (= (process-result-signal result) 9) :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy))))
-
 (describe "run output capture and encoding"
   (it "run caps both output streams without pipe deadlock"
     (let ((result (run "/bin/sh"
@@ -343,43 +228,3 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (run "/bin/sh" (list "-c" "printf '\\377'")
            :external-format :utf-8 :decoding-error-policy :error))))
 
-(describe "cancellation"
-  (it "does not cancel an already cached process result"
-    (with-process (process (spawn "/bin/sh" (list "-c" "printf stable") :input :stream :output :stream :error :stream))
-      (let* ((first (communicate process))
-             (token (make-cancellation-token)))
-        (cancel token)
-        (let ((second (communicate process :cancellation-token token :on-cancel :return)))
-          (expect (eq second first) :to-be-truthy)
-          (expect (process-result-cancelled-p second) :to-be nil)
-          (expect (cancellation-requested-p token) :to-be-truthy)))))
-
-  (it "cancels a pipe-holding descendant after its leader exits"
-    (let* ((token (make-cancellation-token))
-           (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test"))
-           (started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "(trap \"\" TERM; sleep 5) & printf leader")
-                        :cancellation-token token :grace-period 0.1d0 :on-cancel :return))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (sb-thread:join-thread canceller)
-      (expect (process-result-cancelled-p result) :to-be-truthy)
-      (expect (string= (process-result-stdout result) "leader") :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy)))
-
-  (it "signals process-io-error when the cancellation watcher does not report joining in time"
-    ;; Force JOIN-THREAD to report :TIMED-OUT for the watcher specifically
-    ;; (matched by name, so copier/feeder threads elsewhere in the same call
-    ;; still join for real) -- the watcher's own escalation logic never runs
-    ;; here; this drives COMMUNICATE's own "did the watcher actually stop"
-    ;; check, not the watcher's cancellation behavior.
-    (let ((original-join (function sb-thread:join-thread)))
-      (sb-ext:without-package-locks
-        (with-mocked-functions
-            (((symbol-function 'sb-thread:join-thread)
-              (lambda (thread &rest args)
-                (if (string= (sb-thread:thread-name thread) "process-kit cancellation watcher")
-                    :timed-out
-                    (apply original-join thread args)))))
-          (signals process-io-error
-            (communicate (spawn "/bin/sh" (list "-c" "printf ok") :output :stream :error :stream)
-                         :cancellation-token (make-cancellation-token))))))))
