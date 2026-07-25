@@ -1,6 +1,11 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
 
 ## [1.0.0] - 2026-07-26
 
@@ -328,7 +333,7 @@ on Linux.
   source-layout breakdown entirely, leaving `docs/src/` as the only place
   a signature or option list is written down.
 
-## [0.2.0]
+## [0.2.0] - 2026-07-25
 
 ### Added
 
@@ -379,7 +384,7 @@ on Linux.
   previously reached, both locally and in `nix flake check`'s
   `checkout-tests`.
 
-## [0.1.0]
+## [0.1.0] - 2026-07-24
 
 First release. The initial `sb-ext:run-program`-only prototype was rebuilt
 into a full process execution toolkit on top of `cl-boundary-kit` and
