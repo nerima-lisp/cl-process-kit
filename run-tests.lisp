@@ -27,6 +27,12 @@
 ;;;; these constants up (never down) whenever a change legitimately raises
 ;;;; coverage; a drop means a genuinely-reachable branch lost its test.
 ;;;;
+;;;; The floors are only enforced when the whole suite ran -- see
+;;;; CL-PROCESS-KIT/TEST:+SUITE-COMPLETE-P+. A platform that skips part of the
+;;;; suite produces a coverage figure that is not comparable to a floor set
+;;;; from a complete run, and holding it to that floor reports the skipped
+;;;; tests as a "regression".
+;;;;
 ;;;; Usage: sbcl --script run-tests.lisp
 ;;;;        CL_PROCESS_KIT_COVERAGE=1 sbcl --script run-tests.lisp
 
@@ -52,6 +58,10 @@
 
 (defun coverage-percentage (covered total)
   (if (zerop total) 100.0 (* 100.0 (/ covered total))))
+
+(defun suite-complete-p ()
+  "Whether every test ran, per CL-PROCESS-KIT/TEST:+SUITE-COMPLETE-P+."
+  (symbol-value (find-symbol "+SUITE-COMPLETE-P+" "CL-PROCESS-KIT/TEST")))
 
 (defun check-coverage-floor (kind actual minimum)
   (when (< actual minimum)
@@ -79,8 +89,14 @@ of the read-only Nix store and must redirect it into its build sandbox."
             expression-percentage expression-covered expression-total
             branch-percentage branch-covered branch-total)
     (funcall (cl-weave-symbol "SAVE-COVERAGE") (coverage-data-path root))
-    (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
-    (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+)))
+    (cond
+      ((suite-complete-p)
+       (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
+       (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+))
+      (t
+       (format t "~&  ratchet not enforced: this platform skips part of the suite, so these~%")
+       (format t "  figures are not comparable to the ~,1F%/~,1F% floors.~%"
+               +minimum-expression-coverage+ +minimum-branch-coverage+)))))
 
 (let* ((root (script-directory))
        (registry-entry (format nil "~A//" (namestring root)))

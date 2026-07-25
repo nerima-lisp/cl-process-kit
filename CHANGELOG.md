@@ -5,11 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [1.0.0] - 2026-07-26
 
 First stable release. The exported API is unchanged from 0.2.0 and is now
-covered by semantic versioning; what this release adds is the evidence that
-it behaves the same way on every platform it claims to support. The suite
-now runs identically on macOS and Linux -- 179 tests, no platform skips --
-and the `### Known Limitations` recorded under 0.1.0 are resolved rather
-than carried forward.
+covered by semantic versioning; what this release adds is evidence about how
+it behaves on the platforms it claims to support, gathered by actually
+running the suite on Linux rather than inferring from macOS. That turned up
+two real defects, both invisible on macOS, and one broken CI check.
+
+The first of the two `### Known Limitations` recorded under 0.1.0 -- the
+drain-timeout bound -- is resolved. The second, a group of timing-sensitive
+process-group tests, is not: it is narrowed, re-diagnosed, and still skipped
+on Linux.
 
 ### Correctness
 
@@ -64,13 +68,30 @@ than carried forward.
 
 ### Testing
 
-- The seven tests skipped on Linux as "known limitations" -- the
-  drain-timeout regression test plus the `process-group termination`,
-  `communicate result caching` and `communicate-async events` cases -- all
-  pass there now. They shared the drain-timeout root cause: each parks a
-  copier on a pipe held open by a descendant, so each inherited the same
-  uninterruptible read. The skips and their `#+linux`/`#-linux` guards are
-  gone; the suite is 179 tests on both platforms.
+- The drain-timeout regression test ("run returns boundedly when an exited
+  leader leaves a pipe-holding descendant") is no longer skipped on Linux --
+  the fix above makes it platform-independent, and it passes on CI.
+
+- The other seven Linux skips are re-diagnosed rather than removed. They had
+  been filed under the same "process-group/communicate timing is not
+  guaranteed identical on Linux" heading as the drain bug, which conflated
+  two unrelated things. They do not share its cause: each asserts that a
+  process group is *gone* within a 0.1s grace period, which a contended
+  shared CI runner cannot reliably deliver. (They pass on an uncontended
+  aarch64 Linux container and fail on GitHub's x86_64 runners -- contention,
+  not architecture.) Their skip reasons now say that instead. They are not
+  given more headroom because a timing assertion loose enough to survive
+  arbitrary contention no longer asserts the timing; the honest fix is to
+  make the assertion event-driven rather than deadline-driven, which is
+  deferred.
+
+- **The coverage ratchet had been failing every Linux CI build**, on a
+  comparison it should never have made. The floor tracked the figure from a
+  complete run (macOS, nothing skipped) but was enforced against the reduced
+  Linux run, so CI reported the skipped tests as a coverage "regression" --
+  86.9% against an 87.0% floor -- with every test passing. The floors are now
+  enforced only when the whole suite ran (`+suite-complete-p+`); otherwise
+  coverage is reported with an explicit note that it is not comparable.
 
 - **A guard-clause test that names a program which does not exist proves
   nothing.** `t/run-timeout-test.lisp`'s "run rejects invalid timeout
@@ -90,7 +111,7 @@ than carried forward.
   unrecognised outcome policy rather than reading it as `:return`.
 
 - Coverage ratchet advanced to 87.4% expression / 81.5% branch (from
-  87.0/79.5), the level the un-skipped tests now reach.
+  87.0/79.5), measured on a complete run.
 
 ### Documentation
 

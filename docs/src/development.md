@@ -24,21 +24,30 @@ line -- coverage alone cannot prove that).
 
 ## Running the suite on both platforms
 
-The suite runs identically on macOS and Linux — the same 179 tests, with no
-platform-conditional skips. Keeping it that way is worth some effort, because
-process semantics diverge exactly where this library works: signal delivery,
-process-group reaping, and whether closing a descriptor interrupts a thread
-already blocked reading it (macOS/BSD do; Linux does not). Divergences here
-have twice been invisible on one platform while broken on the other — see
-1.0.0's `### Correctness` notes in the [changelog](changelog.md).
+The suite is 179 tests. All of them run on macOS; seven are `it-skip`ped on
+Linux under `#+linux`, each a case asserting that a process group is gone
+within a 0.1s grace period — timing a contended shared CI runner cannot
+reliably deliver. `t/package.lisp`'s `+suite-complete-p+` records that, and
+`run-tests.lisp` enforces its coverage ratchet only when it is true: a floor
+set from a complete run is not a bound on a partial one, and holding the
+Linux run to the macOS floor reported the skipped tests as a coverage
+regression on every CI build before 1.0.0.
 
-Two habits follow from that. Never name a program a guard-clause test does
-not intend to execute: `/bin/true` does not exist on macOS, so a
+Running on both platforms is worth the effort, because process semantics
+diverge exactly where this library works: signal delivery, process-group
+reaping, and whether closing a descriptor interrupts a thread already blocked
+reading it (macOS/BSD do; Linux does not). Two real defects shipped in 0.2.0
+were invisible on macOS and obvious on Linux — see 1.0.0's `### Correctness`
+notes in the [changelog](changelog.md).
+
+Two habits follow. Never name a program a guard-clause test does not intend
+to execute: `/bin/true` does not exist on macOS, so a
 `(signals error (run "/bin/true" ... :bad-option))` there passes on the
 launch failure whether or not the guard exists. Resolve fixtures through
 `PATH` with the `%true-program`/`%spawn-sleeping` helpers in `t/package.lisp`
-instead. And prefer fixing a platform difference over skipping the test that
-catches it — a `#+linux it-skip` hides the failure from CI without making the
+instead. And reach for a `#+linux it-skip` only for a test whose *assertion*
+is unsound on that platform, never for one catching a real difference in the
+library — skipping the latter hides the failure from CI without making the
 library any less broken there.
 
 CI runs Linux. To check locally before pushing, run the suite in a container:
