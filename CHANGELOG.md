@@ -2,12 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0]
+## [0.2.0]
 
-First release. The initial `sb-ext:run-program`-only prototype was rebuilt
-into a full process execution toolkit on top of `cl-boundary-kit` and
-`cl-log-kit`; nothing prior to this was ever tagged, so there is no
-compatibility surface to preserve.
+### Added
+
+- Published a MkDocs Material documentation site (installation,
+  execution/async/pipeline/PTY guides, and a results-and-conditions
+  reference) to GitHub Pages, built `--strict` so broken links or
+  unlisted pages fail the build. See `docs/src/` and `nix build .#docs`.
 
 ### Dependencies
 
@@ -15,6 +17,13 @@ compatibility surface to preserve.
   `cl-tty-kit` v0.4.0 -> v0.5.0 (`cl-log-kit` was already at latest,
   v1.1.0). Verified with a full `nix flake check` (both `checkout-tests`
   and `pty-tests`), not just a local `sbcl --script` run.
+- `cl-boundary-kit` v0.5.0 added its own new dependency on `cl-log-kit`;
+  `flake.nix`'s `clBoundaryKit` package derivation now passes it as a
+  `lispLibs` input, or `nix build .#cl-process-kit` fails with `Component
+  :CL-LOG-KIT not found` (`nix flake check`'s `checkout-tests` didn't
+  catch this, since it points ASDF at every input's source directly
+  rather than going through `buildASDFSystem`'s Nix-tracked dependency
+  graph).
 - Fixed `t/native-spawn-test.sh`'s Darwin file-mode check, which had never
   actually passed under `nix flake check` on macOS: a Nix sandbox's `PATH`
   puts GNU coreutils' `stat` ahead of the system's, and GNU `stat -f`
@@ -37,6 +46,19 @@ compatibility surface to preserve.
   smaller one instead. Opt-in and `NIL` by default: the lowered limit is
   inherited by the child through `exec` and persists for its lifetime, so
   this is a caller decision, not a silent default.
+- Copier/feeder read-write chunk size raised from a 4 KiB page to 64 KiB;
+  `SB-SPROF` showed this dominating large-transfer wall time.
+- `run-tests.lisp` now enforces a coverage ratchet: it fails the run if
+  `src/` expression or branch coverage regresses below the best level
+  previously reached, both locally and in `nix flake check`'s
+  `checkout-tests`.
+
+## [0.1.0]
+
+First release. The initial `sb-ext:run-program`-only prototype was rebuilt
+into a full process execution toolkit on top of `cl-boundary-kit` and
+`cl-log-kit`; nothing prior to this was ever tagged, so there is no
+compatibility surface to preserve.
 
 ### Known Limitations
 

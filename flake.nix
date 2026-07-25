@@ -44,7 +44,7 @@
         pkgs:
         pkgs.stdenvNoCC.mkDerivation {
           pname = "cl-process-kit-docs";
-          version = "0.1.0";
+          version = "0.2.0";
           src = pkgs.lib.fileset.toSource {
             root = ./.;
             fileset = pkgs.lib.fileset.unions [
@@ -80,6 +80,7 @@
             version = "0.5.0";
             src = cl-boundary-kit;
             systems = [ "cl-boundary-kit" ];
+            lispLibs = [ clLogKit ];
           };
           clLogKit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
@@ -91,7 +92,7 @@
         rec {
           cl-process-kit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-process-kit";
-            version = "0.1.0";
+            version = "0.2.0";
             src = self;
             systems = [ "cl-process-kit" ];
             lispLibs = [
@@ -107,7 +108,7 @@
           };
           cl-process-kit-pty = pkgs.stdenv.mkDerivation {
             pname = "cl-process-kit-pty";
-            version = "0.1.0";
+            version = "0.2.0";
             src = self;
             nativeBuildInputs = [ pkgs.sbcl ];
             buildPhase = ''

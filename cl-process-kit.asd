@@ -6,7 +6,7 @@
 Python's subprocess.run() and Node.js's child_process.spawn(). Consolidates
 the ad-hoc \"timeout-guarded process launch\" logic previously reimplemented
 across several sister projects into a single, reusable library."
-  :version "0.1.0"
+  :version "0.2.0"
   :author "nerima-lisp"
   :maintainer "nerima-lisp"
   :license "MIT"
@@ -38,7 +38,7 @@ across several sister projects into a single, reusable library."
 
 (asdf:defsystem "cl-process-kit/test"
   :description "Test system for cl-process-kit"
-  :version "0.1.0"
+  :version "0.2.0"
   :author "nerima-lisp"
   :maintainer "nerima-lisp"
   :license "MIT"
