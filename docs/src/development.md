@@ -1,7 +1,10 @@
 # Development
 
 ```sh
-nix flake check
+git clone https://github.com/nerima-lisp/cl-process-kit.git
+cd cl-process-kit
+nix develop        # SBCL + a C compiler, CL_SOURCE_REGISTRY preconfigured
+nix flake check    # build the native trampoline, run the full test suite
 ```
 
 The Nix flake pins the tested `cl-weave`, `cl-boundary-kit`, and
@@ -9,6 +12,37 @@ The Nix flake pins the tested `cl-weave`, `cl-boundary-kit`, and
 `nix flake check` is the preferred way to run the suite. Inside
 `nix develop`, `sbcl --script run-tests.lisp` is also available with the
 pinned dependencies.
+
+`nix flake check` is the authoritative gate: it runs in the same sandboxed
+environment CI uses, and covers the test suite (`checks.default`), the PTY
+integration suite (`checks.pty-tests`), Nix formatting (`checks.formatting`),
+and the `mkdocs --strict` build (`checks.docs`). A change that only passes a
+local, non-sandboxed `sbcl --script run-tests.lisp` is not fully verified.
+
+```sh
+nix run .#test     # the suite on its own
+nix fmt            # format Nix sources (treefmt/nixfmt)
+```
+
+## Making a change
+
+Beyond the org-wide
+[CONTRIBUTING](https://github.com/nerima-lisp/.github/blob/main/CONTRIBUTING.md)
+guide, three expectations are specific to this repository.
+
+- Add or update tests for any behaviour change. `t/mutation-test.lisp` and
+  `t/property-test.lisp` are the examples to follow: they test a contract
+  rather than a single case.
+- `src/` coverage is a ratchet, not a report. The
+  `+minimum-expression-coverage+` / `+minimum-branch-coverage+` floors in
+  `run-tests.lisp` fail the build on a regression, and are only ever raised —
+  see [Coverage](#coverage) below.
+- Prefer a structural refactoring tool such as
+  [`paredit-cli`](https://github.com/nerima-lisp/paredit-cli) over
+  hand-editing balanced-parenthesis code when reshaping existing forms.
+
+Record user-visible changes under `## [Unreleased]` in `CHANGELOG.md`; the
+release workflow extracts that version's section as the GitHub Release body.
 
 Beyond example-based `describe`/`it`/`expect` tests, the suite uses
 [`cl-weave`](https://github.com/nerima-lisp/cl-weave)'s `it-property` for

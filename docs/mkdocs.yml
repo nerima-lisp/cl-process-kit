@@ -141,5 +141,8 @@ nav:
       - Structured Logging: guide/logging.md
   - Reference:
       - Results and Conditions: reference/results-and-conditions.md
-  - Development: development.md
-  - Changelog: changelog.md
+      - Compatibility: reference/compatibility.md
+      - Security Considerations: reference/security-considerations.md
+  - Project:
+      - Development: development.md
+      - Changelog: changelog.md
