@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-26
+
+A packaging fix. No source change, and the exported API is identical to 1.0.0.
+
+### Fixed
+
+- `flake.nix` asked for `cl-log-kit/v1.6.0`, a tag that has never existed —
+  `cl-log-kit` has only ever released `v1.0.0`. The v1.0.0 tag of this
+  repository still carries that reference, so anyone pinning
+  `cl-process-kit/v1.0.0` as a flake fails at `nix flake lock` from a cold
+  cache. Existing lock files hide it by holding an already-resolved revision,
+  which is why CI stayed green. Three repositories pin this one that
+  way — `cl-boundary-kit`, `cl-cc-runtime` and `cl-cli` — and would all have
+  broken at once on the next `flake-update.yml` run.
+
+  Tags are never moved, so v1.0.0 stays as it is and this release exists to
+  give downstream something that resolves. Sibling versions are now read out of
+  each pinned source's own `.asd` rather than repeated here, so the two cannot
+  drift apart again.
+
 ## [1.0.0] - 2026-07-26
 
 First stable release. The exported API is unchanged from 0.2.0 and is now
