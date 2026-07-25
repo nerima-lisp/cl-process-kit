@@ -4,20 +4,33 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # These four nerima-lisp packages are consumed purely as raw ASDF source
+    # trees (buildASDFSystem `src`, or CL_SOURCE_REGISTRY at runtime) --
+    # this flake never touches any of their own `packages`/`checks` outputs.
+    # `flake = false` fetches just the source and skips evaluating each
+    # package's own flake.nix, so their transitive dev-only inputs (e.g.
+    # cl-weave's treefmt-nix, cl-boundary-kit/cl-log-kit's cl-json-kit) never
+    # enter this flake's lock file.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v0.11.0";
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:nerima-lisp/cl-weave/v1.0.0";
+      flake = false;
     };
     cl-boundary-kit = {
-      url = "github:nerima-lisp/cl-boundary-kit/v0.5.0";
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:nerima-lisp/cl-boundary-kit/v0.6.0";
+      flake = false;
     };
     cl-log-kit = {
-      url = "github:nerima-lisp/cl-log-kit/v1.1.0";
-      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:nerima-lisp/cl-log-kit/v1.6.0";
+      flake = false;
     };
     cl-tty-kit = {
-      url = "github:nerima-lisp/cl-tty-kit/v0.5.0";
+      # git+https with submodules=1 (NOT github:, which uses GitHub's tarball
+      # API and silently drops submodules regardless of the query string) --
+      # cl-tty-kit v0.6.0 vendors nerima-lisp/cl-prolog as a git submodule
+      # (vendor/cl-prolog), and its own .asd self-registers that path, so a
+      # submodule-less fetch leaves ASDF unable to resolve the "cl-tty-kit"
+      # system's :cl-prolog dependency.
+      url = "git+https://github.com/nerima-lisp/cl-tty-kit?ref=refs/tags/v0.6.0&submodules=1";
       flake = false;
     };
   };
@@ -77,14 +90,14 @@
           pkgs = nixpkgs.legacyPackages.${system};
           clBoundaryKit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-boundary-kit";
-            version = "0.5.0";
+            version = "0.6.0";
             src = cl-boundary-kit;
             systems = [ "cl-boundary-kit" ];
             lispLibs = [ clLogKit ];
           };
           clLogKit = pkgs.sbcl.buildASDFSystem {
             pname = "cl-log-kit";
-            version = "1.1.0";
+            version = "1.6.0";
             src = cl-log-kit;
             systems = [ "cl-log-kit" ];
           };

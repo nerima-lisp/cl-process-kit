@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Dependencies
+
+- Bumped `cl-weave` v0.11.0 -> v1.0.0, `cl-boundary-kit` v0.5.0 -> v0.6.0,
+  `cl-log-kit` v1.1.0 -> v1.6.0, `cl-tty-kit` v0.5.0 -> v0.6.0. Checked each
+  upstream changelog/diff for breaking changes before bumping: none touch
+  the surface this library actually calls (`cl-boundary-kit`'s v0.6.0
+  unbounded-wait-by-default change is scoped to its own
+  `process-boundary-run`/`process-kit-run-fn`, which this library never
+  calls; `cl-log-kit`'s "logger as explicit first argument" breaking change
+  landed at v1.0.0 and `%log` (`src/logging.lisp`) already passed it
+  explicitly). Verified with a full `nix flake check` (`checkout-tests`
+  152/152 at 87.5%/79.9% coverage, `pty-tests` 6/6), not just a local
+  `sbcl --script` run.
+- `flake.nix`'s four nerima-lisp inputs are consumed purely as raw ASDF
+  source trees (`buildASDFSystem` `src`, or `CL_SOURCE_REGISTRY` at
+  runtime) -- none of their own flake `packages`/`checks` outputs are ever
+  used. `cl-weave`, `cl-boundary-kit`, and `cl-log-kit` were still declared
+  as full flakes (missing `flake = false`, unlike the already-correct
+  `cl-tty-kit`), so `nix flake update` pulled in their entire transitive
+  dev-only input graphs (`treefmt-nix`, `cl-json-kit`, and `cl-json-kit`'s
+  own sub-inputs) into this project's `flake.lock` for no reason. Added
+  `flake = false` to all three, shrinking `flake.lock` from 34 nodes to 6.
+- `cl-tty-kit` v0.6.0 vendors `nerima-lisp/cl-prolog` as a git submodule
+  (`vendor/cl-prolog`) and self-registers that path from its own `.asd`;
+  a plain `github:` fetch does not follow submodules (regardless of a
+  `?submodules=1` query string, which only the `git+https://` fetcher
+  honors), so the Nix sandbox had an empty `vendor/cl-prolog` and
+  `cl-process-kit/pty-test` failed to load with `Component #:CL-PROLOG not
+  found, required by #<SYSTEM "cl-tty-kit">`. This only broke inside `nix
+  flake check`'s sandboxed `pty-tests`, not local `sbcl --script` runs
+  against a manually-cloned `~/ghq` checkout that already had the
+  submodule populated -- another case (see the `[0.2.0]` entry below) of a
+  local run passing while the authoritative sandboxed check does not.
+  Fixed by switching `cl-tty-kit`'s input to
+  `git+https://github.com/nerima-lisp/cl-tty-kit?ref=refs/tags/v0.6.0&submodules=1`.
+
 ## [0.2.0]
 
 ### Added
