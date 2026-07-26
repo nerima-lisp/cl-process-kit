@@ -148,11 +148,14 @@ entry point:
 | `pipeline.lisp` | `run-pipeline` |
 | `native-spawn.lisp` | The [`spawn-native`](guide/native-spawn.md) trampoline: CLI-flag translation, the launch-error pipe protocol, and `native-process-launch-error` |
 
-The optional `cl-process-kit/pty` system adds `pty-package.lisp` and
+The optional `cl-process-kit/pty` system adds `package-pty.lisp` and
 `pty.lisp` (the [PTY backend](guide/pty.md)'s alien routine declarations
 and `pty-process` operations) as a separate `:pathname "src"` component
 list in `cl-process-kit.asd`, kept out of the core system's
-dependency/build footprint.
+dependency/build footprint. Its `defpackage` stays out of
+`src/package.lisp` so loading the core system never defines a package
+whose symbols have no code behind them; the test-side package, which has
+no such constraint, lives in `t/package.lisp` with the rest.
 
 `t/` mirrors that split:
 

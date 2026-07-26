@@ -6,6 +6,17 @@
   (:import-from #:cl-weave #:expect #:it #:signals #:run-all #:with-mocked-functions)
   (:export #:run-tests #:+suite-complete-p+))
 
+;;; The cl-process-kit/pty-test system's package. It lives here rather than in
+;;; a second manifest because CODING_STANDARD.md keeps defpackage forms in one
+;;; file per directory, and because t/ has no other name reserved for a
+;;; manifest -- `package.lisp` and `suite.lisp` are the only two exempt from
+;;; the `<source>-test.lisp` rule. Loading this file from the pty-test system
+;;; costs only the fixtures above, which need nothing the pty system lacks.
+(defpackage #:cl-process-kit/pty-test
+  (:use #:cl)
+  (:import-from #:cl-weave #:expect #:it #:run-all)
+  (:export #:run-tests))
+
 (in-package #:cl-process-kit/test)
 
 (defparameter +suite-complete-p+

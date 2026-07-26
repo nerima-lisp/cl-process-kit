@@ -68,7 +68,7 @@ across several sister projects into a single, reusable library."
   :pathname "src"
   :serial t
   :components
-  ((:file "pty-package")
+  ((:file "package-pty")
    (:file "pty")))
 
 (asdf:defsystem "cl-process-kit/pty-test"
@@ -84,5 +84,5 @@ across several sister projects into a single, reusable library."
   :pathname "t"
   :serial t
   :components
-  ((:file "pty-package")
+  ((:file "package")
    (:file "pty-test")))
