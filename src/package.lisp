@@ -4,6 +4,12 @@
   (require :sb-posix))
 
 (defpackage #:process-kit
+  (:documentation
+   "Running an external program and collecting what it did. Commands are
+described declaratively as a COMMAND-SPEC — program, argv, environment policy,
+stdio disposition, decoding — and executed with a deadline and a cancellation
+token, so a hung child fails the caller rather than the build. Pipelines
+compose specs without a shell.")
   (:use #:cl)
   (:export
    ;; command-spec: declarative program/argv/environment/stdio description

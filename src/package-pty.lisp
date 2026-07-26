@@ -9,6 +9,13 @@
 ;;;; system it declares, under the package-<subsystem>.lisp name.
 
 (defpackage #:process-kit/pty
+  (:documentation
+   "Running a program attached to a pseudo-terminal rather than to pipes. A
+child that inspects isatty(3) behaves differently under the two, so anything
+whose output depends on being on a terminal — colour, progress bars, a shell's
+interactive prompt — has to be driven from here. Optional: this package belongs
+to the cl-process-kit/pty system, which links native/pty.c and depends on
+cl-tty-kit.")
   (:use #:cl)
   ;; Kept verbatim from the previous one-line manifest. Nothing this package
   ;; inherits binds PROCESS-PTY today -- CL does not define it and it is not
