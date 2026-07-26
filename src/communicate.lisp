@@ -36,7 +36,8 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
                     (,drain-timeout-seconds . drain-timeout-seconds)))
     (%ensure (or (null (car entry)) (and (realp (car entry)) (not (minusp (car entry)))))
              "~A must be NIL or a non-negative real." (cdr entry)))
-  (%ensure (and (realp poll-interval) (plusp poll-interval)) "POLL-INTERVAL must be a positive real.")
+  (%ensure (and (realp poll-interval) (plusp poll-interval))
+           "POLL-INTERVAL must be a positive real.")
   (%ensure (and (integerp timeout-signal) (<= 1 timeout-signal 31)
                 (integerp kill-signal) (<= 1 kill-signal 31))
            "Signals must be integers between 1 and 31.")
@@ -44,13 +45,15 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
   (%ensure (or (null max-output-characters)
                (and (integerp max-output-characters) (not (minusp max-output-characters))))
            "MAX-OUTPUT-CHARACTERS must be NIL or a non-negative integer.")
-  (%ensure (member result-type '(:string :octets) :test #'eq) "RESULT-TYPE must be :STRING or :OCTETS.")
+  (%ensure (member result-type '(:string :octets) :test #'eq)
+           "RESULT-TYPE must be :STRING or :OCTETS.")
   (%ensure (member decoding-error-policy '(:replace :error) :test #'eq)
            "DECODING-ERROR-POLICY must be :REPLACE or :ERROR.")
   (%ensure (%clock-p clock)
            "CLOCK must be a CL-BOUNDARY-KIT clock boundary (see CL-BOUNDARY-KIT:MAKE-CLOCK).")
-  (%ensure (%sleeper-p sleeper)
-           "SLEEPER must be a CL-BOUNDARY-KIT sleeper boundary (see CL-BOUNDARY-KIT:MAKE-SLEEPER)."))
+  (%ensure
+   (%sleeper-p sleeper)
+   "SLEEPER must be a CL-BOUNDARY-KIT sleeper boundary (see CL-BOUNDARY-KIT:MAKE-SLEEPER)."))
 
 (defun %wait-until-terminal (process deadline poll clock-fn sleep-fn)
   (loop
@@ -98,7 +101,8 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
           (%begin-communication
            process :input input :timeout timeout :grace-period grace-period
                    :timeout-signal timeout-signal :kill-signal kill-signal :on-timeout on-timeout
-                   :max-output-characters max-output-characters :drain-timeout-seconds drain-timeout-seconds
+                   :max-output-characters max-output-characters
+                   :drain-timeout-seconds drain-timeout-seconds
                    :result-type result-type :external-format external-format
                    :decoding-error-policy decoding-error-policy :clock clock
                    :sleeper sleeper :poll-interval poll-interval)))
@@ -109,9 +113,12 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
          (deadline (and timeout (+ started timeout)))
          (stdin-stream (process-stdin process))
          (stdout-stream (process-output process))
-         (stderr-stream (let ((stream (process-stderr process))) (unless (eq stream stdout-stream) stream)))
-         (stdout-capture (%make-capture max-output-characters result-type external-format decoding-error-policy))
-         (stderr-capture (%make-capture max-output-characters result-type external-format decoding-error-policy))
+         (stderr-stream (let ((stream (process-stderr process)))
+                          (unless (eq stream stdout-stream) stream)))
+         (stdout-capture (%make-capture max-output-characters result-type
+                                        external-format decoding-error-policy))
+         (stderr-capture (%make-capture max-output-characters result-type
+                                        external-format decoding-error-policy))
          (stdout-copier (%start-copier stdout-stream stdout-capture :stdout))
          (stderr-copier (%start-copier stderr-stream stderr-capture :stderr))
          (stdin-feeder (%start-feeder process input external-format))
@@ -136,7 +143,8 @@ passed in rather than hard-coded here."
                (when (%process-group-alive-p process)
                  (ignore-errors (signal-group timeout-signal))
                  (escalate-unless-gone
-                  (lambda () (ignore-errors (%signal-process-group-after-leader-exit process kill-signal)))))
+                  (lambda ()
+                    (ignore-errors (%signal-process-group-after-leader-exit process kill-signal)))))
                (ignore-errors (process-wait process :timeout grace-period))))
       (unwind-protect
            (progn
@@ -158,11 +166,13 @@ passed in rather than hard-coded here."
                (ignore-errors (%close-stream-for-copier stdin-stream stdin-feeder))
                (when stdin-feeder (setf (%copier-condition-after-forced-close-p stdin-feeder) t)))
              (%drain-copiers copier-entries drain-timeout-seconds clock-fn)
-             (let* ((result (%raw-process-result process stdout-capture stderr-capture timed-out-p started clock-fn))
+             (let* ((result (%raw-process-result process stdout-capture stderr-capture
+                                                 timed-out-p started clock-fn))
                     (cached-result (%cache-process-result process result)))
                (setf completed-p t)
                (when (and timed-out-p (eq on-timeout :error))
-                 (error 'process-timeout-error :command nil :arguments nil :timeout timeout :result cached-result))
+                 (error 'process-timeout-error :command nil :arguments nil
+                        :timeout timeout :result cached-result))
                cached-result))
         (unless completed-p (%abort-communication process) (terminate-and-reap))
         ;; Retire the copiers before their streams, not after. Asking them to
@@ -208,9 +218,11 @@ escalation %COMMUNICATE-BASE already performs."
                (mark-finished () (sb-thread:with-mutex (state-lock) (setf done-p t)))
                (mark-cancelled () (sb-thread:with-mutex (state-lock) (setf cancelled-p t)))
                (cancelled-p () (sb-thread:with-mutex (state-lock) cancelled-p))
-               (record-watcher-error (condition) (sb-thread:with-mutex (state-lock) (setf watcher-error condition)))
+               (record-watcher-error (condition)
+                 (sb-thread:with-mutex (state-lock) (setf watcher-error condition)))
                (watcher-error () (sb-thread:with-mutex (state-lock) watcher-error))
-               (signal-owned-group (signal) (%signal-process-group process signal :allow-terminal-leader t))
+               (signal-owned-group (signal)
+                 (%signal-process-group process signal :allow-terminal-leader t))
                (wait-for-group (seconds)
                  (%wait-until-group-gone
                   process (+ (clock) (max seconds +default-poll-interval+))
@@ -240,7 +252,8 @@ escalation, recording any signalling failure for the main thread to re-raise."
                             (signal-owned-group 9)
                             (escalate-unless-gone
                              grace-period
-                             (lambda () (error "Owned process group remained alive after SIGKILL."))))))
+                             (lambda ()
+                               (error "Owned process group remained alive after SIGKILL."))))))
                      (error (condition)
                        (record-watcher-error
                         (make-condition 'process-io-error :stream :cleanup :cause condition)))))))
@@ -262,11 +275,13 @@ escalation, recording any signalling failure for the main thread to re-raise."
           (mark-finished)
           (when watcher
             (when (eq (sb-thread:join-thread
-                       watcher :timeout (+ (* 2 grace-period) (* 3 +default-poll-interval+)) :default :timed-out)
+                       watcher :timeout (+ (* 2 grace-period) (* 3 +default-poll-interval+))
+                       :default :timed-out)
                       :timed-out)
               (error 'process-io-error
                      :stream :cleanup
-                     :cause (make-condition 'simple-error
-                                            :format-control "Cancellation watcher did not terminate.")))
+                     :cause (make-condition
+                             'simple-error
+                             :format-control "Cancellation watcher did not terminate.")))
             (let ((condition (watcher-error)))
               (when condition (error condition)))))))))

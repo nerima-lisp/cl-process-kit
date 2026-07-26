@@ -91,7 +91,8 @@ accept/truncate accounting."
                 end))
       (loop for end from (length octets) downto 0
             do (handler-case
-                   (return (values (sb-ext:octets-to-string octets :end end :external-format external-format)
+                   (return (values (sb-ext:octets-to-string octets :end end
+                                                            :external-format external-format)
                                    end))
                  (sb-int:character-decoding-error ())))))
 
@@ -110,10 +111,12 @@ accept/truncate accounting."
                (%decode-complete-prefix
                 octets (%capture-external-format capture) (%capture-decoding-error-policy capture))
              (%capture-append-decoded capture decoded)
-             (if (and (%capture-limit capture) (>= (%capture-count capture) (%capture-limit capture)))
+             (if (and (%capture-limit capture)
+                      (>= (%capture-count capture) (%capture-limit capture)))
                  (progn
                    (when (< end (length octets)) (setf (%capture-truncated-p capture) t))
-                   (setf (%capture-pending-octets capture) (make-array 0 :element-type '(unsigned-byte 8))))
+                   (setf (%capture-pending-octets capture)
+                         (make-array 0 :element-type '(unsigned-byte 8))))
                  (setf (%capture-pending-octets capture) (subseq octets end)))))))))
 
 (defun %capture-value (capture stream-name)
@@ -131,9 +134,10 @@ accept/truncate accounting."
                capture
                (sb-ext:octets-to-string
                 (%capture-pending-octets capture)
-                :external-format (if (eq (%capture-decoding-error-policy capture) :replace)
-                                      (%replacement-external-format (%capture-external-format capture))
-                                      (%capture-external-format capture))))
+                :external-format
+                (if (eq (%capture-decoding-error-policy capture) :replace)
+                    (%replacement-external-format (%capture-external-format capture))
+                    (%capture-external-format capture))))
             (sb-int:character-decoding-error (condition)
               (error 'process-io-error :stream stream-name :cause condition)))
           (setf (%capture-pending-octets capture) (make-array 0 :element-type '(unsigned-byte 8))))

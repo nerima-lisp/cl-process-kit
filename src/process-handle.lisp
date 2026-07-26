@@ -93,7 +93,9 @@ spelled the same way."
                     (%process-state-group-ownership state) :leader-terminal)
               result))))))
 
-(defun process-try-wait (process) (check-type process process-handle) (%cache-terminal-result process))
+(defun process-try-wait (process)
+  (check-type process process-handle)
+  (%cache-terminal-result process))
 
 (defun process-wait (process &key timeout (poll-interval 0.01d0) (clock +default-clock+))
   (check-type process process-handle)

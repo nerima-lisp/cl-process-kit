@@ -29,8 +29,10 @@ or the :OUTPUT (merge-into-stdout) marker."
        (output :capture)
        ((:error error-policy) :capture)
        timeout (grace-period 1.0d0)
-       (poll-interval +default-poll-interval+) (timeout-signal 15) (kill-signal 9) (on-timeout :error)
-       (max-output-characters +default-output-limit+) (drain-timeout-seconds +default-drain-timeout-seconds+)
+       (poll-interval +default-poll-interval+)
+       (timeout-signal 15) (kill-signal 9) (on-timeout :error)
+       (max-output-characters +default-output-limit+)
+       (drain-timeout-seconds +default-drain-timeout-seconds+)
        (result-type :string) (external-format :default) (decoding-error-policy :replace)
        (clock +default-clock+) (sleeper +default-sleeper+) fd-limit)
   (%ensure (and (or (stringp command) (pathnamep command)) (plusp (length (namestring command))))
@@ -50,15 +52,18 @@ or the :OUTPUT (merge-into-stdout) marker."
                           :environment effective-environment :directory directory
                           :external-format :latin-1 :fd-limit fd-limit)))
     (unwind-protect
-         (let ((result (communicate process :input input :timeout timeout
-                                             :grace-period grace-period :poll-interval poll-interval
-                                             :timeout-signal timeout-signal :kill-signal kill-signal
-                                             :on-timeout :return :max-output-characters max-output-characters
-                                             :drain-timeout-seconds drain-timeout-seconds
-                                             :result-type result-type :external-format external-format
-                                             :decoding-error-policy decoding-error-policy
-                                             :clock clock :sleeper sleeper)))
-           (setf (process-result-program result) command (process-result-arguments result) arguments)
+         (let ((result (communicate process
+                                    :input input :timeout timeout
+                                    :grace-period grace-period :poll-interval poll-interval
+                                    :timeout-signal timeout-signal :kill-signal kill-signal
+                                    :on-timeout :return
+                                    :max-output-characters max-output-characters
+                                    :drain-timeout-seconds drain-timeout-seconds
+                                    :result-type result-type :external-format external-format
+                                    :decoding-error-policy decoding-error-policy
+                                    :clock clock :sleeper sleeper)))
+           (setf (process-result-program result) command
+                 (process-result-arguments result) arguments)
            (when (and (process-result-timed-out-p result) (eq on-timeout :error))
              (error 'process-timeout-error
                     :command command :arguments arguments :timeout timeout :result result))
@@ -89,21 +94,23 @@ or the :OUTPUT (merge-into-stdout) marker."
       ((not (process-success-p result)) (error 'process-exit-error :result result)))
     result))
 
-(defun run-command (command &key input timeout (grace-period 1.0d0) (on-timeout :error) cancellation-token
-                               (on-cancel :error) (max-output-characters +default-output-limit+)
-                               (drain-timeout-seconds +default-drain-timeout-seconds+))
+(defun run-command (command &key input timeout (grace-period 1.0d0) (on-timeout :error)
+                              cancellation-token (on-cancel :error)
+                              (max-output-characters +default-output-limit+)
+                              (drain-timeout-seconds +default-drain-timeout-seconds+))
   (check-type command command-spec)
   (%validate-outcome-policy 'on-timeout on-timeout)
   (%validate-outcome-policy 'on-cancel on-cancel)
   (with-process (process (spawn-command command :stdin (if input :pipe nil)))
-    (let ((result (communicate process :input input :timeout timeout :grace-period grace-period
-                                        :on-timeout :return :on-cancel :return
-                                        :cancellation-token cancellation-token
-                                        :max-output-characters max-output-characters
-                                        :drain-timeout-seconds drain-timeout-seconds
-                                        :result-type (command-result-type command)
-                                        :external-format (command-external-format command)
-                                        :decoding-error-policy (command-decoding-error-policy command))))
+    (let ((result (communicate process
+                               :input input :timeout timeout :grace-period grace-period
+                               :on-timeout :return :on-cancel :return
+                               :cancellation-token cancellation-token
+                               :max-output-characters max-output-characters
+                               :drain-timeout-seconds drain-timeout-seconds
+                               :result-type (command-result-type command)
+                               :external-format (command-external-format command)
+                               :decoding-error-policy (command-decoding-error-policy command))))
       (setf (process-result-program result) (command-program command)
             (process-result-arguments result) (command-arguments command))
       (cond
@@ -124,7 +131,8 @@ or the :OUTPUT (merge-into-stdout) marker."
          (user-callback (getf options :event-callback))
          (process (spawn-command command :stdin (if input :pipe nil)))
          (communication-options
-           (%plist-without options '(:event-callback :result-type :external-format :decoding-error-policy))))
+           (%plist-without options '(:event-callback :result-type :external-format
+                                     :decoding-error-policy))))
     (handler-case
         (apply #'communicate-async process
                (append communication-options
@@ -133,7 +141,8 @@ or the :OUTPUT (merge-into-stdout) marker."
                              :decoding-error-policy (command-decoding-error-policy command)
                              :event-callback
                              (lambda (event)
-                               (when (eq (process-event-kind event) :terminal) (close-process-streams process))
+                               (when (eq (process-event-kind event) :terminal)
+                                 (close-process-streams process))
                                (when user-callback (funcall user-callback event))))))
       (condition (condition)
         (ignore-errors (close-process-streams process))

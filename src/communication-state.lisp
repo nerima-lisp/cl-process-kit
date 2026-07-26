@@ -65,7 +65,8 @@ are equal. The recurring guard behind COMMUNICATE's at-most-once-with-
 consistent-options contract, used by both %RESERVE-COMMUNICATION and
 %BEGIN-COMMUNICATION."
   `(unless (%communication-contract-equal-p ,expected ,actual)
-     (error 'communicate-options-mismatch :process ,process :expected-options ,expected :actual-options ,actual)))
+     (error 'communicate-options-mismatch :process ,process
+            :expected-options ,expected :actual-options ,actual)))
 
 (defun %reserve-communication (process contract owner)
   (with-locked-process-state (state process)
@@ -94,7 +95,8 @@ consistent-options contract, used by both %RESERVE-COMMUNICATION and
 
 (defun %begin-communication
     (process &rest options &key input timeout grace-period timeout-signal kill-signal on-timeout
-                              max-output-characters drain-timeout-seconds result-type external-format
+                              max-output-characters drain-timeout-seconds
+                              result-type external-format
                               decoding-error-policy clock sleeper poll-interval)
   (declare (ignore options))
   (let ((actual-contract

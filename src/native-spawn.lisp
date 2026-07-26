@@ -80,7 +80,8 @@ the keyword PROCESS-KIT reports a NATIVE-PROCESS-LAUNCH-ERROR failed during.")
                       (or (typep (cdr mapping) '(integer 0))
                           (member (cdr mapping) '(:close :null))))
                  "Invalid native FD mapping ~S." mapping)
-        (%ensure (not (gethash (car mapping) targets)) "Duplicate native FD target ~D." (car mapping))
+        (%ensure (not (gethash (car mapping) targets))
+                 "Duplicate native FD target ~D." (car mapping))
         (setf (gethash (car mapping) targets) t))))
 
   (defun spawn-native
@@ -89,7 +90,9 @@ the keyword PROCESS-KIT reports a NATIVE-PROCESS-LAUNCH-ERROR failed during.")
          uid gid groups umask resource-limits directory environment
          input output error (external-format :default) status-hook)
     "Launch PROGRAM through the native trampoline and synchronously report setup errors."
-    (setf program (if search (%resolve-executable program arguments environment directory) (namestring program)))
+    (setf program (if search
+                      (%resolve-executable program arguments environment directory)
+                      (namestring program)))
     (%native-check-fd-mappings fd-mappings)
     (%ensure (or (null process-group) (eql process-group 0))
              "Joining an existing process group is unsupported by this backend.")

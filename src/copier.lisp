@@ -52,7 +52,8 @@ forfeit, which is precisely what blowing the drain deadline means."
              (%capture-append capture buffer count)
              (when event-sink (funcall event-sink stream-name (subseq buffer 0 count))))
            (copy-octets ()
-             (let ((buffer (make-array +default-copy-buffer-size+ :element-type '(unsigned-byte 8))))
+             (let ((buffer (make-array +default-copy-buffer-size+
+                                       :element-type '(unsigned-byte 8))))
                (loop for count = (read-sequence buffer input)
                      while (plusp count)
                      do (emit buffer count))))
@@ -74,7 +75,8 @@ forfeit, which is precisely what blowing the drain deadline means."
                (loop for count = (read-sequence buffer input)
                      while (plusp count)
                      for octets = (sb-ext:string-to-octets
-                                   buffer :end count :external-format (stream-external-format input))
+                                   buffer :end count
+                                   :external-format (stream-external-format input))
                      do (emit octets (length octets))))))
     (cond
       ((subtypep (stream-element-type input) '(unsigned-byte 8)) (copy-octets))
@@ -91,7 +93,8 @@ forfeit, which is precisely what blowing the drain deadline means."
                (handler-case (%copy-stream-bounded input capture stream-name event-sink
                                                    (lambda () (%copier-stop-requested-p copier)))
                  (error (condition)
-                   (setf (%copier-condition-after-forced-close-p copier) (%copier-forced-close-p copier)
+                   (setf (%copier-condition-after-forced-close-p copier)
+                         (%copier-forced-close-p copier)
                          (%copier-condition copier)
                          (make-condition 'process-io-error :stream stream-name :cause condition)))))
              :name (format nil "process-kit ~A copier" stream-name)))
@@ -168,10 +171,12 @@ copier hit on its own, before any of this, are re-signalled at the end."
              :stream :cleanup
              :cause (make-condition
                      'simple-error
-                     :format-control "Copier thread did not terminate after its stream was closed.")))
+                     :format-control
+                     "Copier thread did not terminate after its stream was closed.")))
     (dolist (entry entries)
       (let ((copier (cdr entry)))
-        (when (and copier (%copier-condition copier) (not (%copier-condition-after-forced-close-p copier)))
+        (when (and copier (%copier-condition copier)
+                   (not (%copier-condition-after-forced-close-p copier)))
           (error (%copier-condition copier)))))))
 
 (defun %write-process-octets (stream octets)
@@ -182,7 +187,8 @@ copier hit on its own, before any of this, are re-signalled at the end."
           (loop with offset = 0
                 while (< offset (length octets))
                 for written = (sb-posix:write
-                               fd (sb-sys:sap+ (sb-sys:vector-sap octets) offset) (- (length octets) offset))
+                               fd (sb-sys:sap+ (sb-sys:vector-sap octets) offset)
+                               (- (length octets) offset))
                 do (incf offset written))))))
 
 (defun %write-process-input (process input external-format)
@@ -194,11 +200,13 @@ copier hit on its own, before any of this, are re-signalled at the end."
            (when input
              (etypecase input
                (string
-                (%write-process-octets stream (sb-ext:string-to-octets input :external-format external-format)))
+                (%write-process-octets
+                 stream (sb-ext:string-to-octets input :external-format external-format)))
                ((vector (unsigned-byte 8)) (%write-process-octets stream input))
                (stream
                 (if (subtypep (stream-element-type input) '(unsigned-byte 8))
-                    (let ((buffer (make-array +default-copy-buffer-size+ :element-type '(unsigned-byte 8))))
+                    (let ((buffer (make-array +default-copy-buffer-size+
+                                              :element-type '(unsigned-byte 8))))
                       (loop for count = (read-sequence buffer input)
                             while (plusp count)
                             do (%write-process-octets stream (subseq buffer 0 count))))
@@ -206,7 +214,9 @@ copier hit on its own, before any of this, are re-signalled at the end."
                       (loop for count = (read-sequence buffer input)
                             while (plusp count)
                             do (%write-process-octets
-                                stream (sb-ext:string-to-octets buffer :end count :external-format external-format))))))))
+                                stream
+                                (sb-ext:string-to-octets buffer :end count
+                                                         :external-format external-format))))))))
         (close stream)))))
 
 (defun %start-feeder (process input external-format)
@@ -218,7 +228,8 @@ copier hit on its own, before any of this, are re-signalled at the end."
                (lambda ()
                  (handler-case (%write-process-input process input external-format)
                    (error (condition)
-                     (setf (%copier-condition-after-forced-close-p feeder) (%copier-forced-close-p feeder)
+                     (setf (%copier-condition-after-forced-close-p feeder)
+                           (%copier-forced-close-p feeder)
                            (%copier-condition feeder)
                            (make-condition 'process-io-error :stream :stdin :cause condition)))))
                :name "cl-process-kit stdin feeder"))

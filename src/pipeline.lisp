@@ -14,13 +14,17 @@
            (prog1
                (cons
                 (setf read-stream
-                      (sb-sys:make-fd-stream read-fd :input t :element-type '(unsigned-byte 8) :auto-close t))
+                      (sb-sys:make-fd-stream read-fd :input t
+                                             :element-type '(unsigned-byte 8) :auto-close t))
                 (setf write-stream
-                      (sb-sys:make-fd-stream write-fd :output t :element-type '(unsigned-byte 8) :auto-close t)))
+                      (sb-sys:make-fd-stream write-fd :output t
+                                             :element-type '(unsigned-byte 8) :auto-close t)))
              (setf completed-p t))
         (unless completed-p
-          (if read-stream (ignore-errors (close read-stream :abort t)) (ignore-errors (sb-posix:close read-fd)))
-          (if write-stream (ignore-errors (close write-stream :abort t)) (ignore-errors (sb-posix:close write-fd))))))))
+          (if read-stream (ignore-errors (close read-stream :abort t))
+              (ignore-errors (sb-posix:close read-fd)))
+          (if write-stream (ignore-errors (close write-stream :abort t))
+              (ignore-errors (sb-posix:close write-fd))))))))
 
 (defun %close-pipeline-streams (pipes)
   (dolist (pipe pipes)
@@ -80,7 +84,8 @@ ON-TIMEOUT/ON-CANCEL is :ERROR; otherwise returns the PIPELINE-RESULT."
               (stage-result (nth stage-index result-list))
               (stage-command (nth stage-index commands)))
          (error 'process-timeout-error
-                :command (command-program stage-command) :arguments (command-arguments stage-command)
+                :command (command-program stage-command)
+                :arguments (command-arguments stage-command)
                 :timeout timeout :result stage-result :stage-index stage-index
                 :pipeline-result pipeline-result)))
       ((and cancelled-p (eq on-cancel :error))
@@ -107,8 +112,14 @@ bookkeeping that RUN-PIPELINE's worker thread wraps around it."
               nil)
     (condition (condition) (values nil condition))))
 
-(defun run-pipeline (commands &key input timeout (grace-period 1.0d0) cancellation-token (on-timeout :error)
-                                 (on-cancel :error) (max-output-characters +default-output-limit+))
+;;; Raised from inside AWAIT-PIPELINE-STAGES, nested deeply enough that the
+;;; message cannot be written at its point of use and stay inside 100 columns.
+(defparameter +pipeline-join-failure-message+
+  "Pipeline worker thread did not terminate after process streams were closed.")
+
+(defun run-pipeline (commands &key input timeout (grace-period 1.0d0) cancellation-token
+                                (on-timeout :error) (on-cancel :error)
+                                (max-output-characters +default-output-limit+))
   (%ensure (and (consp commands) (every #'command-p commands))
            "COMMANDS must be a non-empty proper list of command specifications.")
   (%validate-outcome-policy 'on-timeout on-timeout)
@@ -134,16 +145,20 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                        (when (or worker-error (= completed-count count)) (return)))
                      (sleep +default-poll-interval+))
                    (when worker-error
-                     (%log :error "pipeline stage failed, terminating pipeline" :condition worker-error)
+                     (%log :error "pipeline stage failed, terminating pipeline"
+                           :condition worker-error)
                      (%terminate-processes processes grace-period))
                    (let ((join-deadline (+ (clock) grace-period +default-drain-timeout-seconds+))
                          (cleanup-failure nil))
                      (dolist (thread threads)
-                       (when (eq (sb-thread:join-thread thread :timeout (max 0 (- join-deadline (clock)))
+                       (when (eq (sb-thread:join-thread thread
+                                                        :timeout (max 0 (- join-deadline (clock)))
                                                         :default :timed-out)
                                  :timed-out)
-                         (dolist (process processes) (ignore-errors (close-process-streams process)))
-                         (when (eq (sb-thread:join-thread thread :timeout +default-poll-interval+ :default :timed-out)
+                         (dolist (process processes)
+                           (ignore-errors (close-process-streams process)))
+                         (when (eq (sb-thread:join-thread thread :timeout +default-poll-interval+
+                                                          :default :timed-out)
                                    :timed-out)
                            (setf cleanup-failure t))))
                      (when cleanup-failure
@@ -152,7 +167,7 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                               :cause (make-condition
                                       'simple-error
                                       :format-control
-                                      "Pipeline worker thread did not terminate after process streams were closed."))))
+                                      +pipeline-join-failure-message+))))
                    (when worker-error (error worker-error)))))
         (unwind-protect
              (progn
@@ -166,11 +181,13 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                              for command in commands
                              collect
                              (sb-thread:make-thread
-                              (let ((stage-process process) (stage-index index) (stage-command command))
+                              (let ((stage-process process) (stage-index index)
+                                    (stage-command command))
                                 (lambda ()
                                   (multiple-value-bind (result worker-error)
                                       (%communicate-pipeline-stage
-                                       stage-process (and (zerop stage-index) input) timeout grace-period
+                                       stage-process (and (zerop stage-index) input)
+                                       timeout grace-period
                                        cancellation-token max-output-characters stage-command)
                                     (sb-thread:with-mutex (state-lock)
                                       (setf (aref results stage-index) result
@@ -178,8 +195,10 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                                       (incf completed-count)))))
                               :name "process-kit pipeline stage"))))
                  (await-pipeline-stages threads))
-               (%build-pipeline-result (coerce results 'list) commands timeout on-timeout on-cancel started #'clock))
-          (unless (every #'process-handle-reaped-p processes) (%terminate-processes processes grace-period))
+               (%build-pipeline-result (coerce results 'list) commands timeout
+                                       on-timeout on-cancel started #'clock))
+          (unless (every #'process-handle-reaped-p processes)
+            (%terminate-processes processes grace-period))
           (%close-pipeline-streams pipes))))))
 
 (defun run-pipeline/checked (commands &rest options)
@@ -188,5 +207,6 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
          (results (pipeline-result-results result))
          (stage-index (position-if-not #'process-success-p results)))
     (when stage-index
-      (error 'pipeline-exit-error :result result :stage-index stage-index :stage-result (nth stage-index results)))
+      (error 'pipeline-exit-error :result result :stage-index stage-index
+             :stage-result (nth stage-index results)))
     result))

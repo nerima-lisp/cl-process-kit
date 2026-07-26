@@ -46,13 +46,15 @@ POSIX platforms in general; correct for the two this library targets.")
 (defun %get-nofile-limit ()
   "(VALUES SOFT HARD) -- this process's current RLIMIT_NOFILE."
   (sb-alien:with-alien ((limit (sb-alien:struct %rlimit)))
-    (%ensure (zerop (%c-getrlimit +rlimit-nofile+ (sb-alien:addr limit))) "getrlimit(RLIMIT_NOFILE) failed.")
+    (%ensure (zerop (%c-getrlimit +rlimit-nofile+ (sb-alien:addr limit)))
+             "getrlimit(RLIMIT_NOFILE) failed.")
     (values (sb-alien:slot limit 'cur) (sb-alien:slot limit 'max))))
 
 (defun %set-nofile-limit (soft hard)
   (sb-alien:with-alien ((limit (sb-alien:struct %rlimit)))
     (setf (sb-alien:slot limit 'cur) soft (sb-alien:slot limit 'max) hard)
-    (%ensure (zerop (%c-setrlimit +rlimit-nofile+ (sb-alien:addr limit))) "setrlimit(RLIMIT_NOFILE) failed.")))
+    (%ensure (zerop (%c-setrlimit +rlimit-nofile+ (sb-alien:addr limit)))
+             "setrlimit(RLIMIT_NOFILE) failed.")))
 
 (defun call-with-spawn-fd-limit (limit thunk)
   "Call THUNK with this process's RLIMIT_NOFILE soft limit temporarily
@@ -97,7 +99,8 @@ this function returns."
         (ignore-errors (sb-posix:kill (- pid) 9))))
     (ignore-errors (sb-ext:process-kill raw 9))
     (ignore-errors (sb-ext:process-wait raw))
-    (dolist (stream (list (sb-ext:process-input raw) (sb-ext:process-output raw) (sb-ext:process-error raw)))
+    (dolist (stream (list (sb-ext:process-input raw) (sb-ext:process-output raw)
+                          (sb-ext:process-error raw)))
       (when (streamp stream) (ignore-errors (close stream))))))
 
 (defun spawn (command arguments &key (search nil) input output error environment directory
@@ -157,7 +160,8 @@ this function returns."
         do (setf start (1+ end))))
 
 (defun %effective-directory (directory)
-  (uiop:ensure-directory-pathname (merge-pathnames (or directory #P"./") *default-pathname-defaults*)))
+  (uiop:ensure-directory-pathname (merge-pathnames (or directory #P"./")
+                                                   *default-pathname-defaults*)))
 
 (defun %executable-file-p (pathname)
   (and (uiop:file-exists-p pathname)

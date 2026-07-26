@@ -47,7 +47,8 @@
       (loop while (and (>= (%process-task-queue-count task) (%process-task-capacity task))
                        (eq (%process-task-overflow-policy task) :block)
                        (not (cancellation-requested-p token)))
-            do (sb-thread:condition-wait (%process-task-queue-space task) (%process-task-queue-mutex task)))
+            do (sb-thread:condition-wait (%process-task-queue-space task)
+                                         (%process-task-queue-mutex task)))
       (when (cancellation-requested-p token) (return-from %task-submit-output nil))
       (when (and (plusp (%process-task-pending-drops task))
                  (< (%process-task-queue-count task) (%process-task-capacity task)))
@@ -60,10 +61,12 @@
       (if (>= (%process-task-queue-count task) (%process-task-capacity task))
           (progn
             (incf (%process-task-pending-drops task))
-            (sb-thread:with-mutex ((%process-task-mutex task)) (incf (%process-task-dropped-event-count task)))
+            (sb-thread:with-mutex ((%process-task-mutex task))
+              (incf (%process-task-dropped-event-count task)))
             nil)
           (progn
-            (push (%make-process-event :kind kind :sequence (%task-next-sequence task) :octets (copy-seq octets))
+            (push (%make-process-event :kind kind :sequence (%task-next-sequence task)
+                                       :octets (copy-seq octets))
                   (%process-task-queue task))
             (incf (%process-task-queue-count task))
             (sb-thread:condition-notify (%process-task-queue-ready task))
@@ -73,7 +76,8 @@
   (sb-thread:with-mutex ((%process-task-queue-mutex task))
     (loop while (and (plusp (%process-task-pending-drops task))
                      (>= (%process-task-queue-count task) (%process-task-capacity task)))
-          do (sb-thread:condition-wait (%process-task-queue-space task) (%process-task-queue-mutex task)))
+          do (sb-thread:condition-wait (%process-task-queue-space task)
+                                       (%process-task-queue-mutex task)))
     (when (plusp (%process-task-pending-drops task))
       (push (%make-process-event :kind :overflow :sequence (%task-next-sequence task)
                                  :dropped-count (%process-task-pending-drops task))
@@ -89,7 +93,8 @@
 (defparameter +task-terminal-state-rules+
   (list (cons #'process-event-condition :failed)
         (cons (lambda (event)
-                (let ((result (process-event-result event))) (and result (process-result-cancelled-p result))))
+                (let ((result (process-event-result event)))
+                  (and result (process-result-cancelled-p result))))
               :cancelled))
   "Ordered (PREDICATE . STATE) data classifying a terminal PROCESS-EVENT into
 PROCESS-TASK's final state. %CLASSIFY-TERMINAL-STATE is the only logic that
@@ -105,8 +110,10 @@ data, separately from the traversal that applies it.")
   (loop
     (let (event terminal)
       (sb-thread:with-mutex ((%process-task-queue-mutex task))
-        (loop while (and (null (%process-task-queue task)) (not (%process-task-producer-finished-p task)))
-              do (sb-thread:condition-wait (%process-task-queue-ready task) (%process-task-queue-mutex task)))
+        (loop while (and (null (%process-task-queue task))
+                         (not (%process-task-producer-finished-p task)))
+              do (sb-thread:condition-wait (%process-task-queue-ready task)
+                                           (%process-task-queue-mutex task)))
         (if (%process-task-queue task)
             (progn
               (setf event (car (last (%process-task-queue task)))

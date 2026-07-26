@@ -38,13 +38,15 @@ this file follows."
   (check-type task process-task)
   (sb-thread:with-mutex ((%process-task-mutex task))
     (%bounded-ring-contents
-     (%process-task-events task) (%process-task-event-history-start task) (%process-task-event-history-count task))))
+     (%process-task-events task) (%process-task-event-history-start task)
+     (%process-task-event-history-count task))))
 
 (defun process-task-first-event-sequence (task)
   (check-type task process-task)
   (sb-thread:with-mutex ((%process-task-mutex task))
     (when (plusp (%process-task-event-history-count task))
-      (process-event-sequence (aref (%process-task-events task) (%process-task-event-history-start task))))))
+      (process-event-sequence (aref (%process-task-events task)
+                                    (%process-task-event-history-start task))))))
 
 (define-task-reader process-task-last-event-sequence %process-task-last-event-sequence)
 (define-task-reader process-task-history-evicted-count %process-task-history-evicted-count)
@@ -59,7 +61,8 @@ this file follows."
       (let ((offset (- sequence (process-event-sequence first))))
         (when (and (not (minusp offset)) (< offset (%process-task-event-history-count task)))
           (aref (%process-task-events task)
-                (mod (+ (%process-task-event-history-start task) offset) (length (%process-task-events task)))))))))
+                (mod (+ (%process-task-event-history-start task) offset)
+                     (length (%process-task-events task)))))))))
 
 (defun next-process-event (task &key cursor timeout)
   "Return EVENT, NEXT-CURSOR, STATUS, and GAP-COUNT for one independent consumer."
@@ -68,7 +71,8 @@ this file follows."
            "CURSOR must be NIL or a positive sequence number.")
   (%ensure (or (null timeout) (and (realp timeout) (not (minusp timeout))))
            "TIMEOUT must be NIL or non-negative.")
-  (let ((deadline (and timeout (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
+  (let ((deadline (and timeout
+                       (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
     (sb-thread:with-mutex ((%process-task-mutex task))
       (loop
         (let* ((first (%task-history-first-event task))
@@ -83,10 +87,14 @@ this file follows."
           (unless (member (%process-task-state task) '(:reserved :running) :test #'eq)
             (return-from next-process-event (values nil requested :terminal 0)))
           (if deadline
-              (let ((remaining (/ (- deadline (get-internal-real-time)) internal-time-units-per-second)))
-                (when (<= remaining 0) (return-from next-process-event (values nil requested :timeout 0)))
-                (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task) :timeout remaining))
-              (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task))))))))
+              (let ((remaining (/ (- deadline (get-internal-real-time))
+                                  internal-time-units-per-second)))
+                (when (<= remaining 0)
+                  (return-from next-process-event (values nil requested :timeout 0)))
+                (sb-thread:condition-wait (%process-task-waitqueue task)
+                                          (%process-task-mutex task) :timeout remaining))
+              (sb-thread:condition-wait (%process-task-waitqueue task)
+                                        (%process-task-mutex task))))))))
 
 (defun callback-errors (task)
   (check-type task process-task)
@@ -130,18 +138,22 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
            (handler-case
                (progn
                  (setf (%process-task-dispatcher task)
-                       (sb-thread:make-thread (lambda () (%task-dispatch task)) :name "process-kit event dispatcher"))
+                       (sb-thread:make-thread (lambda () (%task-dispatch task))
+                                              :name "process-kit event dispatcher"))
                  (setf (%process-task-worker task)
                        (sb-thread:make-thread
                         (lambda ()
-                          (sb-thread:with-mutex ((%process-task-mutex task)) (setf (%process-task-state task) :running))
+                          (sb-thread:with-mutex ((%process-task-mutex task))
+                            (setf (%process-task-state task) :running))
                           (let ((*communication-reservation-owner* task)
-                                (*process-event-sink* (lambda (kind octets) (%task-submit-output task kind octets))))
+                                (*process-event-sink* (lambda (kind octets)
+                                                        (%task-submit-output task kind octets))))
                             (handler-case
                                 (%task-finish task
                                               (apply #'communicate process
                                                      (append communication-options
-                                                             (list :cancellation-token token :on-cancel :return)))
+                                                             (list :cancellation-token token
+                                                                   :on-cancel :return)))
                                               nil)
                               (condition (condition) (%task-finish task nil condition)))))
                         :name "process-kit communicate worker"))
@@ -162,21 +174,27 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
                                         :event-history-capacity)))
            (token (make-cancellation-token))
            (task (%make-process-task
-                  :process process :token token :capacity capacity :overflow-policy policy :callback callback
-                  :events (make-array (if (and (integerp history-capacity) (not (minusp history-capacity)))
+                  :process process :token token :capacity capacity
+                  :overflow-policy policy :callback callback
+                  :events (make-array (if (and (integerp history-capacity)
+                                               (not (minusp history-capacity)))
                                            history-capacity 0))
-                  :callback-errors (make-array (if (and (integerp history-capacity) (not (minusp history-capacity)))
+                  :callback-errors (make-array (if (and (integerp history-capacity)
+                                                        (not (minusp history-capacity)))
                                                     history-capacity 0))))
            (contract (%async-contract communication-options)))
       (%ensure (and (integerp capacity) (plusp capacity)) "EVENT-QUEUE-CAPACITY must be positive.")
       (%ensure (and (integerp history-capacity) (not (minusp history-capacity)))
                "EVENT-HISTORY-CAPACITY must be non-negative.")
-      (%ensure (member policy '(:drop-newest :block) :test #'eq) "Unknown event overflow policy ~S." policy)
+      (%ensure (member policy '(:drop-newest :block) :test #'eq)
+               "Unknown event overflow policy ~S." policy)
       (when callback (check-type callback function))
       (%validate-communication-options
-       (getf contract :input) (getf contract :timeout) (getf contract :grace-period) (getf contract :poll-interval)
+       (getf contract :input) (getf contract :timeout)
+       (getf contract :grace-period) (getf contract :poll-interval)
        (getf contract :timeout-signal) (getf contract :kill-signal) (getf contract :on-timeout)
-       (getf contract :max-output-characters) (getf contract :drain-timeout-seconds) (getf contract :result-type)
+       (getf contract :max-output-characters)
+       (getf contract :drain-timeout-seconds) (getf contract :result-type)
        (getf contract :decoding-error-policy) (getf contract :clock) (getf contract :sleeper))
       (%reserve-communication process contract task)
       (launch-communicate-async-threads task process communication-options token))))
@@ -185,15 +203,19 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
   (check-type task process-task)
   (%ensure (or (null timeout) (and (realp timeout) (not (minusp timeout))))
            "TIMEOUT must be NIL or non-negative.")
-  (let ((deadline (and timeout (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
+  (let ((deadline (and timeout
+                       (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
     (sb-thread:with-mutex ((%process-task-mutex task))
       (loop while (member (%process-task-state task) '(:reserved :running) :test #'eq)
             do (if deadline
-                   (let ((remaining (/ (- deadline (get-internal-real-time)) internal-time-units-per-second)))
+                   (let ((remaining (/ (- deadline (get-internal-real-time))
+                                       internal-time-units-per-second)))
                      (when (<= remaining 0) (return-from await-process (values nil nil)))
-                     (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task)
+                     (sb-thread:condition-wait (%process-task-waitqueue task)
+                                               (%process-task-mutex task)
                                                :timeout remaining))
-                   (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task))))
+                   (sb-thread:condition-wait (%process-task-waitqueue task)
+                                             (%process-task-mutex task))))
       (when (%process-task-condition task) (error (%process-task-condition task)))
       (values (%process-task-result task) t))))
 

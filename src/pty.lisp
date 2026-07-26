@@ -78,7 +78,8 @@ instead of being repeated -- and risking drift -- at every call site."
 (define-pty-syscall close sb-alien:int (fd sb-alien:int))
 
 (defun %string-block (strings)
-  (let* ((encoded (mapcar (lambda (string) (sb-ext:string-to-octets string :external-format :utf-8)) strings))
+  (let* ((encoded (mapcar (lambda (string) (sb-ext:string-to-octets string :external-format :utf-8))
+                          strings))
          (size (reduce #'+ encoded :key (lambda (octets) (1+ (length octets))) :initial-value 0))
          (storage (make-array (max 1 size) :element-type '(unsigned-byte 8) :initial-element 0))
          (offset 0))
@@ -123,8 +124,10 @@ pipe, a test harness, CI)."
   (check-type rows (integer 1 65535))
   (check-type cols (integer 1 65535))
   (multiple-value-bind (path arguments environment directory) (%command-values command)
-    (multiple-value-bind (argument-block argument-size argument-count) (%string-block (cons path arguments))
-      (multiple-value-bind (environment-block environment-size environment-count) (%string-block environment)
+    (multiple-value-bind (argument-block argument-size argument-count)
+        (%string-block (cons path arguments))
+      (multiple-value-bind (environment-block environment-size environment-count)
+          (%string-block environment)
         (sb-sys:with-pinned-objects (argument-block environment-block)
           (sb-alien:with-alien ((fd sb-alien:int) (pid sb-alien:int))
             (%native-spawn/checked
@@ -161,7 +164,9 @@ pipe, a test harness, CI)."
                            :external-format (pty-process-external-format process)))
 
 (defun pty-write-string (process string)
-  (pty-write-octets process (sb-ext:string-to-octets string :external-format (pty-process-external-format process))))
+  (pty-write-octets
+   process
+   (sb-ext:string-to-octets string :external-format (pty-process-external-format process))))
 
 (defun pty-resize (process rows cols)
   (check-type rows (integer 1 65535))
@@ -175,12 +180,14 @@ pipe, a test harness, CI)."
 
 (defun pty-foreground-pgid (process)
   (sb-alien:with-alien ((pgid sb-alien:int))
-    (%native-foreground-pgid/checked (pty-process-fd process) (pty-process-pid process) (sb-alien:addr pgid))
+    (%native-foreground-pgid/checked (pty-process-fd process)
+                                     (pty-process-pid process) (sb-alien:addr pgid))
     pgid))
 
 (defun pty-signal-foreground (process signal-number)
   (check-type signal-number (integer 1))
-  (%native-signal-foreground/checked (pty-process-fd process) (pty-process-pid process) signal-number)
+  (%native-signal-foreground/checked (pty-process-fd process)
+                                     (pty-process-pid process) signal-number)
   process)
 
 (defun %decode-status (status)
@@ -203,24 +210,29 @@ pipe, a test harness, CI)."
   (sb-thread:with-mutex ((pty-process-mutex process))
     (or (pty-process-result process)
         (sb-alien:with-alien ((status sb-alien:int) (ready sb-alien:int))
-          (%native-wait/checked (pty-process-pid process) (if nohang 1 0) (sb-alien:addr status) (sb-alien:addr ready))
+          (%native-wait/checked (pty-process-pid process) (if nohang 1 0)
+                                (sb-alien:addr status) (sb-alien:addr ready))
           (when (plusp ready)
             (setf (pty-process-result process)
-                  (%make-result process status :timed-out-p timed-out-p :cancelled-p cancelled-p)))))))
+                  (%make-result process status :timed-out-p timed-out-p
+                                :cancelled-p cancelled-p)))))))
 
 (defun %terminate-and-wait (process flag)
   (ignore-errors (%native-signal-session (pty-process-pid process) 15))
   (loop repeat 25
-        for result = (%try-wait process t :timed-out-p (eq flag :timeout) :cancelled-p (eq flag :cancel))
+        for result = (%try-wait process t :timed-out-p (eq flag :timeout)
+                                          :cancelled-p (eq flag :cancel))
         when result return result
         do (sleep 0.01)
         finally
            (ignore-errors (%native-signal-session (pty-process-pid process) 9))
-           (return (%try-wait process nil :timed-out-p (eq flag :timeout) :cancelled-p (eq flag :cancel)))))
+           (return (%try-wait process nil :timed-out-p (eq flag :timeout)
+                              :cancelled-p (eq flag :cancel)))))
 
 (defun pty-wait (process &key timeout cancellation-token)
   (check-type process pty-process)
-  (let ((deadline (and timeout (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
+  (let ((deadline (and timeout
+                       (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
     (loop
       for result = (%try-wait process t)
       when result return result

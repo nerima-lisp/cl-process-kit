@@ -71,8 +71,9 @@
            "ENVIRONMENT-POLICY must be :INHERIT or a proper list of KEY=VALUE strings.")
   (unless (eq environment-policy :inherit)
     (%validate-environment-entries environment-policy "ENVIRONMENT-POLICY"))
-  (%ensure (%valid-environment-update-p environment-update)
-           "ENVIRONMENT-UPDATE must be an alist of valid (KEY . VALUE) pairs; NIL values delete keys.")
+  (%ensure
+   (%valid-environment-update-p environment-update)
+   "ENVIRONMENT-UPDATE must be an alist of valid (KEY . VALUE) pairs; NIL values delete keys.")
   (let ((seen-updates (make-hash-table :test #'equal)))
     (dolist (entry environment-update)
       (%ensure (not (gethash (car entry) seen-updates))
