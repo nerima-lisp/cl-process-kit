@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `+default-grace-period-seconds+` (1.0d0), replacing bare `1.0d0` literals
+  repeated across six `&key` defaults in `run`, `run-command`,
+  `run-pipeline`, `%communicate-base`, `communicate`, and
+  `%async-contract` -- the largest single instance of unnamed default-value
+  duplication found this session.
 - `+default-timeout-signal+` (15, SIGTERM) and `+default-kill-signal+` (9,
   SIGKILL) in `src/parameters.lisp`, replacing bare `15`/`9` literals
   repeated across `run`, `%communicate-base`, and `communicate-async`'s

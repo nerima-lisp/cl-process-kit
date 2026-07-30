@@ -93,7 +93,7 @@ is written down."
      :stderr-truncated-p (%capture-truncated-p stderr-capture))))
 
 (defun %communicate-base
-    (process &key input timeout (grace-period 1.0d0)
+    (process &key input timeout (grace-period +default-grace-period-seconds+)
                (timeout-signal +default-timeout-signal+) (kill-signal +default-kill-signal+)
                (on-timeout :error) (max-output-characters +default-output-limit+)
                (drain-timeout-seconds +default-drain-timeout-seconds+) (result-type :string)
@@ -213,7 +213,7 @@ escalation %COMMUNICATE-BASE already performs."
                      (if (member :on-cancel options :test #'eq)
                          (getf options :on-cancel)
                          *current-on-cancel*)))
-         (grace-period (or (getf options :grace-period) 1.0d0))
+         (grace-period (or (getf options :grace-period) +default-grace-period-seconds+))
          (state-lock (sb-thread:make-mutex :name "process-kit cancellation state"))
          (done-p nil)
          (cancelled-p nil)

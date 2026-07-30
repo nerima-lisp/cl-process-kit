@@ -126,7 +126,7 @@ than this function returning a value for the caller to check."
   (with-plist-options (options)
       ((input :input nil)
        (timeout :timeout nil)
-       (grace-period :grace-period 1.0d0)
+       (grace-period :grace-period +default-grace-period-seconds+)
        (timeout-signal :timeout-signal +default-timeout-signal+)
        (kill-signal :kill-signal +default-kill-signal+)
        (on-timeout :on-timeout :error)

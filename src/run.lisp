@@ -28,7 +28,7 @@ or the :OUTPUT (merge-into-stdout) marker."
      &key (search nil) input environment directory
        (output :capture)
        ((:error error-policy) :capture)
-       timeout (grace-period 1.0d0)
+       timeout (grace-period +default-grace-period-seconds+)
        (poll-interval +default-poll-interval+)
        (timeout-signal +default-timeout-signal+) (kill-signal +default-kill-signal+)
        (on-timeout :error)
@@ -106,7 +106,8 @@ itself never introduces a shell on its own."
       ((not (process-success-p result)) (error 'process-exit-error :result result)))
     result))
 
-(defun run-command (command &key input timeout (grace-period 1.0d0) (on-timeout :error)
+(defun run-command (command &key input timeout
+                              (grace-period +default-grace-period-seconds+) (on-timeout :error)
                               cancellation-token (on-cancel :error)
                               (max-output-characters +default-output-limit+)
                               (drain-timeout-seconds +default-drain-timeout-seconds+))

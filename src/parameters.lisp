@@ -30,6 +30,12 @@ clean stop for a descriptor closed under a live reader.")
 (defparameter +default-output-limit+ 1048576
   "Default MAX-OUTPUT-CHARACTERS: 1 MiB of captured output per stream.")
 
+(defparameter +default-grace-period-seconds+ 1.0d0
+  "Default GRACE-PERIOD: how long a process's group has to exit under
++DEFAULT-TIMEOUT-SIGNAL+ before +DEFAULT-KILL-SIGNAL+ follows. RUN,
+RUN-COMMAND, RUN-PIPELINE, COMMUNICATE, and COMMUNICATE-ASYNC all default
+to this same value; named here so the copies can't drift.")
+
 (defparameter +default-timeout-signal+ 15
   "Default TIMEOUT-SIGNAL: SIGTERM, sent to a child's process group when its
 deadline expires. RUN, RUN-COMMAND, COMMUNICATE, and COMMUNICATE-ASYNC all

@@ -116,7 +116,8 @@ bookkeeping that RUN-PIPELINE's worker thread wraps around it."
 (defparameter +pipeline-join-failure-message+
   "Pipeline worker thread did not terminate after process streams were closed.")
 
-(defun run-pipeline (commands &key input timeout (grace-period 1.0d0) cancellation-token
+(defun run-pipeline (commands &key input timeout
+                                (grace-period +default-grace-period-seconds+) cancellation-token
                                 (on-timeout :error) (on-cancel :error)
                                 (max-output-characters +default-output-limit+))
   "Wire each of COMMANDS' stdout to the next one's stdin, run every stage's
