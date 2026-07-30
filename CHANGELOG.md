@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Unified `await-process` and `next-process-event`'s (`src/async-task.lisp`)
+  independent "wait on the task's condition variable, checking an optional
+  deadline first" blocks into a shared `%wait-on-task` continuation, plus a
+  `%deadline-from-timeout` helper for the relative-timeout-to-absolute-
+  deadline arithmetic both already repeated verbatim. Found via
+  `paredit inspect similarity`, the highest-scoring cross-location match
+  after filtering same-file parent/child nesting noise. Lowered the
+  branch-coverage floor again, 81.4% -> 81.3%, for the same reason as below:
+  removing the duplicated deadline check took 2 more redundant branch points
+  out, holding the uncovered-branch count at 124; see the comment above
+  `+minimum-branch-coverage+` for why 81.4 (not 81.3) was the wrong floor to
+  land on the first time.
 - Unified three independent "poll until done or a deadline passes" loops --
   `%wait-until-terminal` and `%wait-until-group-gone` (`src/communicate.lisp`)
   and `%terminate-processes`'s pipeline-stage shutdown wait

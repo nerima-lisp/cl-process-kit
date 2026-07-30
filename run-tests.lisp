@@ -53,7 +53,17 @@
 ;; reachable branch lost its test" the note above warns about; confirmed by
 ;; the arithmetic above before lowering this floor, not assumed from the
 ;; refactor's intent alone.
-(defparameter +minimum-branch-coverage+ 81.4
+;;
+;; 81.4 -> 81.3: the same reasoning applied a second time in the same
+;; session, unifying AWAIT-PROCESS/NEXT-PROCESS-EVENT's (src/async-task.lisp)
+;; duplicated condition-wait-with-deadline blocks into %WAIT-ON-TASK. Covered
+;; dropped 544 -> 542 and total dropped 668 -> 666, so uncovered held at 124
+;; again. The literal figure this round is 542/666 = 81.38...%, which PRINTS
+;; as "81.4%" (the report's ~,1F rounds it) but is a hair below a floor
+;; written as exactly 81.4 -- set 81.3 with real headroom below the raw
+;; value, not just below its rounded display, so this exact display-vs-raw
+;; trap cannot silently fail the next dedup too.
+(defparameter +minimum-branch-coverage+ 81.3
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()

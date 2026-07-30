@@ -64,6 +64,30 @@ this file follows."
                 (mod (+ (%process-task-event-history-start task) offset)
                      (length (%process-task-events task)))))))))
 
+(defun %deadline-from-timeout (timeout)
+  "NIL if TIMEOUT is NIL, else the GET-INTERNAL-REAL-TIME tick TIMEOUT
+seconds from now. NEXT-PROCESS-EVENT and AWAIT-PROCESS both take a relative
+:TIMEOUT but need an absolute deadline to re-check across a loop's
+iterations."
+  (and timeout (+ (get-internal-real-time) (* timeout internal-time-units-per-second))))
+
+(defun %wait-on-task (task deadline on-timeout)
+  "Block on TASK's condition variable until notified, or call the ON-TIMEOUT
+thunk instead of blocking (or after waiting the last of it out) once DEADLINE
+-- a GET-INTERNAL-REAL-TIME tick, or NIL for no deadline -- has passed.
+
+NEXT-PROCESS-EVENT and AWAIT-PROCESS each wait on this same condition
+variable across a polling loop and differ only in what they return on a
+timeout, which is why that difference is passed in as a continuation rather
+than this function returning a value for the caller to check."
+  (if deadline
+      (let ((remaining (/ (- deadline (get-internal-real-time)) internal-time-units-per-second)))
+        (if (<= remaining 0)
+            (funcall on-timeout)
+            (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task)
+                                      :timeout remaining)))
+      (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task))))
+
 (defun next-process-event (task &key cursor timeout)
   "Return EVENT, NEXT-CURSOR, STATUS, and GAP-COUNT for one independent consumer."
   (check-type task process-task)
@@ -71,8 +95,7 @@ this file follows."
            "CURSOR must be NIL or a positive sequence number.")
   (%ensure (or (null timeout) (and (realp timeout) (not (minusp timeout))))
            "TIMEOUT must be NIL or non-negative.")
-  (let ((deadline (and timeout
-                       (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
+  (let ((deadline (%deadline-from-timeout timeout)))
     (sb-thread:with-mutex ((%process-task-mutex task))
       (loop
         (let* ((first (%task-history-first-event task))
@@ -86,15 +109,9 @@ this file follows."
             (when event (return-from next-process-event (values event (1+ requested) :event 0))))
           (unless (member (%process-task-state task) '(:reserved :running) :test #'eq)
             (return-from next-process-event (values nil requested :terminal 0)))
-          (if deadline
-              (let ((remaining (/ (- deadline (get-internal-real-time))
-                                  internal-time-units-per-second)))
-                (when (<= remaining 0)
-                  (return-from next-process-event (values nil requested :timeout 0)))
-                (sb-thread:condition-wait (%process-task-waitqueue task)
-                                          (%process-task-mutex task) :timeout remaining))
-              (sb-thread:condition-wait (%process-task-waitqueue task)
-                                        (%process-task-mutex task))))))))
+          (%wait-on-task task deadline
+                         (lambda () (return-from next-process-event
+                                      (values nil requested :timeout 0)))))))))
 
 (defun callback-errors (task)
   (check-type task process-task)
@@ -203,19 +220,11 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
   (check-type task process-task)
   (%ensure (or (null timeout) (and (realp timeout) (not (minusp timeout))))
            "TIMEOUT must be NIL or non-negative.")
-  (let ((deadline (and timeout
-                       (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
+  (let ((deadline (%deadline-from-timeout timeout)))
     (sb-thread:with-mutex ((%process-task-mutex task))
       (loop while (member (%process-task-state task) '(:reserved :running) :test #'eq)
-            do (if deadline
-                   (let ((remaining (/ (- deadline (get-internal-real-time))
-                                       internal-time-units-per-second)))
-                     (when (<= remaining 0) (return-from await-process (values nil nil)))
-                     (sb-thread:condition-wait (%process-task-waitqueue task)
-                                               (%process-task-mutex task)
-                                               :timeout remaining))
-                   (sb-thread:condition-wait (%process-task-waitqueue task)
-                                             (%process-task-mutex task))))
+            do (%wait-on-task task deadline
+                              (lambda () (return-from await-process (values nil nil)))))
       (when (%process-task-condition task) (error (%process-task-condition task)))
       (values (%process-task-result task) t))))
 
