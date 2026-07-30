@@ -105,6 +105,13 @@ this function returns."
 
 (defun spawn (command arguments &key (search nil) input output error environment directory
                                    (external-format :default) status-hook preserve-fds fd-limit)
+  "Launch COMMAND with ARGUMENTS as its own process group and return a
+PROCESS-HANDLE without waiting for it to produce output or exit -- the
+low-level, asynchronous primitive RUN and COMMUNICATE are built on. Reach
+for RUN or RUN-COMMAND instead unless driving the process's own streams or
+job control by hand. :SEARCH resolves COMMAND through :ENVIRONMENT's PATH
+rather than requiring an already-resolved path; :FD-LIMIT is documented on
+RUN, which shares it."
   (let ((raw nil) (requested-command command))
     (flet ((abort-spawn (condition)
              "Both HANDLER-CASE clauses below reach this on any failure past

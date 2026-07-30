@@ -144,6 +144,15 @@ than this function returning a value for the caller to check."
      decoding-error-policy clock sleeper poll-interval)))
 
 (defun communicate-async (process &rest options)
+  "Start COMMUNICATE running on a worker thread against PROCESS and return
+a PROCESS-TASK publishing its progress as an ordered PROCESS-EVENT stream
+instead of blocking the caller -- the asynchronous counterpart to
+COMMUNICATE. Consume events via :EVENT-CALLBACK, the bounded/retained
+history accessors (PROCESS-EVENTS, DROPPED-EVENT-COUNT, ...), or the
+cursor-based NEXT-PROCESS-EVENT API; call AWAIT-PROCESS to block for the
+final PROCESS-RESULT COMMUNICATE would otherwise have returned directly.
+Owns its own cancellation token -- pass CANCEL-PROCESS the returned task
+rather than a :CANCELLATION-TOKEN option, which this rejects."
   (check-type process process-handle)
   (%ensure (not (member :cancellation-token options :test #'eq))
            "COMMUNICATE-ASYNC owns its cancellation token.")

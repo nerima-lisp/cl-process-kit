@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Docstrings for the primary public entry points that had none: `spawn`,
+  `run`, `run-shell`, `run-command`, `run-pipeline`, `communicate-async`,
+  `process-success-p`, and `pipeline-success-p`. Found by checking every
+  exported `defun`/`defmacro` for a docstring programmatically rather than
+  spot-checking -- these were the most heavily-used public functions in the
+  library, in contrast to `communicate`, `make-command`, `spawn-native`,
+  `run-command-async`, and `call-with-process`, which already had one.
+  Content matches `docs/src/guide/execution.md`'s existing behavioral
+  description rather than inventing new claims.
+
 ### Changed
 
 - `%start-copier` and `%start-feeder`'s (`src/copier.lisp`) thread bodies

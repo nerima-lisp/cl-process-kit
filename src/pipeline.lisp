@@ -119,6 +119,14 @@ bookkeeping that RUN-PIPELINE's worker thread wraps around it."
 (defun run-pipeline (commands &key input timeout (grace-period 1.0d0) cancellation-token
                                 (on-timeout :error) (on-cancel :error)
                                 (max-output-characters +default-output-limit+))
+  "Wire each of COMMANDS' stdout to the next one's stdin, run every stage's
+COMMUNICATE concurrently on its own thread, and return one aggregated
+PIPELINE-RESULT once every stage has finished. :TIMEOUT/:ON-TIMEOUT and
+:CANCELLATION-TOKEN/:ON-CANCEL apply across the whole pipeline, not per
+stage: a timeout or cancellation terminates every stage's process group,
+not just whichever one was slow. See RUN-PIPELINE/CHECKED to signal
+PIPELINE-EXIT-ERROR for the first failed stage instead of inspecting the
+result."
   (%ensure (and (consp commands) (every #'command-p commands))
            "COMMANDS must be a non-empty proper list of command specifications.")
   (%validate-outcome-policy 'on-timeout on-timeout)

@@ -152,12 +152,18 @@ event's bytes in place."
 (define-event-accessor process-event-dropped-count %process-event-dropped-count)
 
 (defun process-success-p (result)
+  "True when RESULT (a PROCESS-RESULT) exited normally with code 0 --
+neither timed out, cancelled, nor signaled, nor a nonzero exit. See
+PIPELINE-SUCCESS-P for the PIPELINE-RESULT equivalent."
   (and (not (process-result-timed-out-p result))
        (not (process-result-cancelled-p result))
        (eq (process-result-status result) :exited)
        (eql (process-result-exit-code result) 0)))
 
 (defun pipeline-success-p (result)
+  "True when RESULT (a PIPELINE-RESULT) neither timed out nor was
+cancelled and every one of its per-stage PROCESS-RESULTs satisfies
+PROCESS-SUCCESS-P."
   (and (typep result 'pipeline-result)
        (not (pipeline-result-timed-out-p result))
        (not (pipeline-result-cancelled-p result))

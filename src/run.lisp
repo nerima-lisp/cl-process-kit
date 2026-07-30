@@ -75,6 +75,14 @@ or the :OUTPUT (merge-into-stdout) marker."
 (defparameter *run-without-cancellation* #'%run-base)
 
 (defun run (command arguments &rest options)
+  "Spawn COMMAND with ARGUMENTS, wait for it to exit (or :TIMEOUT to
+expire), and return a PROCESS-RESULT -- mirroring Python's
+subprocess.run(...). :OUTPUT/:ERROR control where stdout/stderr go
+(:CAPTURE by default); a :TIMEOUT escalates SIGTERM -> SIGKILL against the
+child's own process group rather than merely abandoning it; :ON-TIMEOUT
+and :ON-CANCEL/:CANCELLATION-TOKEN decide whether that signals or returns a
+partial result. See docs/src/guide/execution.md for the full option
+reference and RUN-COMMAND for the COMMAND-SPEC-driven equivalent."
   (let ((*current-cancellation-token* (getf options :cancellation-token))
         (*current-on-cancel* (%validate-outcome-policy
                               'on-cancel
@@ -85,6 +93,9 @@ or the :OUTPUT (merge-into-stdout) marker."
            (%plist-without options '(:cancellation-token :on-cancel)))))
 
 (defun run-shell (command &rest options)
+  "Run COMMAND (a single shell command line) through \"/bin/sh -c\", with
+the same OPTIONS as RUN. A convenience for a shell command string; RUN
+itself never introduces a shell on its own."
   (apply #'run "/bin/sh" (list "-c" command) options))
 
 (defun run/checked (command arguments &rest options)
@@ -98,6 +109,11 @@ or the :OUTPUT (merge-into-stdout) marker."
                               cancellation-token (on-cancel :error)
                               (max-output-characters +default-output-limit+)
                               (drain-timeout-seconds +default-drain-timeout-seconds+))
+  "Run COMMAND (a validated COMMAND-SPEC) and return a PROCESS-RESULT,
+mirroring RUN but reading its I/O policy, environment, and search behavior
+from the spec's own slots instead of keyword arguments. Prefer this over
+RUN when a command is built once and reused, needs inspecting before
+running, or is composed into a pipeline (see RUN-PIPELINE)."
   (check-type command command-spec)
   (%validate-outcome-policy 'on-timeout on-timeout)
   (%validate-outcome-policy 'on-cancel on-cancel)
