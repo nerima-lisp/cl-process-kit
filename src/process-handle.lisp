@@ -97,7 +97,8 @@ spelled the same way."
   (check-type process process-handle)
   (%cache-terminal-result process))
 
-(defun process-wait (process &key timeout (poll-interval 0.01d0) (clock +default-clock+))
+(defun process-wait (process &key timeout (poll-interval +default-poll-interval+)
+                                (clock +default-clock+))
   (check-type process process-handle)
   (check-type poll-interval (real (0)))
   (%ensure (%clock-p clock)

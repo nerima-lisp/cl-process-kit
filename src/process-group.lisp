@@ -97,7 +97,7 @@ re-signals the original condition."
       (process-try-wait process)
       (unless (%process-group-alive-p process) (return t))
       (when (>= (get-internal-real-time) deadline) (return nil))
-      (sleep 0.01d0))))
+      (sleep +default-poll-interval+))))
 
 (defun close-process (process &key (terminate t) (timeout 1d0))
   (check-type process process-handle)

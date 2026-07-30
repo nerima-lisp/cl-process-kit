@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Unified four more bare `0.01`/`0.01d0` poll-interval literals
+  (`%wait-until-process-group-gone`, `process-wait`'s `:poll-interval`
+  default, and two loops in `src/pty.lisp`) that duplicated
+  `+default-poll-interval+`'s value without referencing it.
+  `src/pty.lisp` lives in the separate `process-kit/pty` package (an
+  optional, independently loadable subsystem), so it gets its own local
+  `+poll-interval+` rather than reaching into `process-kit`'s internals
+  across that package boundary; the other two now reference
+  `+default-poll-interval+` directly. Incidentally fixes `pty.lisp`'s two
+  sites reading as single-float (`0.01`) where every other poll interval in
+  the codebase is double-float (`0.01d0`).
 - `+default-grace-period-seconds+` (1.0d0), replacing bare `1.0d0` literals
   repeated across six `&key` defaults in `run`, `run-command`,
   `run-pipeline`, `%communicate-base`, `communicate`, and

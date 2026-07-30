@@ -8,6 +8,13 @@
 
 (in-package #:process-kit/pty)
 
+(defparameter +poll-interval+ 0.01d0
+  "Interval, in seconds, between liveness/deadline polls in PTY-WAIT and
+%TERMINATE-AND-WAIT. Kept local to this package rather than reaching into
+PROCESS-KIT::+DEFAULT-POLL-INTERVAL+ -- the same value, by convention, but
+a separate tunable, since cl-process-kit/pty is an optional, independently
+loadable subsystem.")
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (member :sbcl *features*) (error "cl-process-kit/pty requires SBCL.")))
 
@@ -223,7 +230,7 @@ pipe, a test harness, CI)."
         for result = (%try-wait process t :timed-out-p (eq flag :timeout)
                                           :cancelled-p (eq flag :cancel))
         when result return result
-        do (sleep 0.01)
+        do (sleep +poll-interval+)
         finally
            (ignore-errors (%native-signal-session (pty-process-pid process) 9))
            (return (%try-wait process nil :timed-out-p (eq flag :timeout)
@@ -240,7 +247,7 @@ pipe, a test harness, CI)."
         return (%terminate-and-wait process :cancel)
       when (and deadline (>= (get-internal-real-time) deadline))
         return (%terminate-and-wait process :timeout)
-      do (sleep 0.01))))
+      do (sleep +poll-interval+))))
 
 (defun pty-cancel (process) (%terminate-and-wait process :cancel))
 
