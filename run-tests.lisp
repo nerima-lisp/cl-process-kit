@@ -171,6 +171,20 @@ Point CL_SOURCE_REGISTRY at a cl-weave checkout (or run under `nix develop` / `n
               condition)
       (uiop:quit 1)))
   (when track-coverage-p (funcall (cl-weave-symbol "RESET-COVERAGE")))
+  ;; A per-test ceiling, not a whole-suite one: `nix flake check`'s
+  ;; `timeout 180 sbcl --script run-tests.lisp` (and CI's job-level
+  ;; `timeout-minutes`) already bound the WHOLE run, but a single hung test
+  ;; still burns that entire budget before failing, with nothing naming which
+  ;; test hung. 30s is generous headroom above every observed test (the
+  ;; slowest today, a SIGKILL escalation test, is ~1.1s) while staying far
+  ;; below the suite-level ceiling, so a genuine deadlock fails fast with a
+  ;; CL-WEAVE:TEST-TIMEOUT naming the specific test instead of a bare process
+  ;; kill naming nothing. Set via SET rather than a literal
+  ;; CL-WEAVE:*DEFAULT-TIMEOUT-MS* token for the same reason SB-COVER symbols
+  ;; above go through FIND-SYMBOL: CL-WEAVE is not necessarily loaded until
+  ;; the ASDF:LOAD-SYSTEM calls above ran, so the reader must not need to
+  ;; resolve the token before that.
+  (set (find-symbol "*DEFAULT-TIMEOUT-MS*" "CL-WEAVE") 30000)
   (unless (funcall (symbol-function (find-symbol "RUN-TESTS" "CL-PROCESS-KIT/TEST")))
     (uiop:quit 1))
   (when track-coverage-p (print-coverage-report root))

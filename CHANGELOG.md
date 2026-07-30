@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Both test entry points (`run-tests.lisp`, `run-pty-tests.lisp`) now bind
+  `cl-weave:*default-timeout-ms*` to 30 seconds before running the suite.
+  The org-wide `TEST_STANDARD.md` requires every repository to set this;
+  cl-process-kit's suite previously had no PER-TEST ceiling, only a
+  whole-suite one (`nix flake check`'s own `timeout 180`/CI's
+  `timeout-minutes`) -- so a single hung test burned the entire budget
+  before failing, with nothing naming which test hung. 30s leaves generous
+  headroom above the slowest observed test (~1.1s) while catching a
+  genuine deadlock with a specific `CL-WEAVE:TEST-TIMEOUT` diagnostic.
+  Reformatted `run-pty-tests.lisp` from a single unreadable one-line form
+  to match `run-tests.lisp`'s style while making this change.
+
 ### Changed
 
 - `flake.nix`'s `.asd` `:version` extraction now uses `cl-nix-forge`'s
