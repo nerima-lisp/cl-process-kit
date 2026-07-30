@@ -40,7 +40,20 @@
 
 (defparameter +minimum-expression-coverage+ 87.4
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
-(defparameter +minimum-branch-coverage+ 81.5
+
+;; 81.5 -> 81.4: unifying %WAIT-UNTIL-TERMINAL/%WAIT-UNTIL-GROUP-GONE/
+;; %TERMINATE-PROCESSES's three hand-written "poll until DONE or DEADLINE"
+;; loops into one shared %POLL-UNTIL (src/communicate.lisp, src/pipeline.lisp)
+;; removed 4 branch points that could only ever be redundant copies of each
+;; other, not 4 newly-uncovered ones: covered branches dropped from 548 to
+;; 544 and the total dropped from 672 to 668 by the exact same amount, so
+;; uncovered branches -- 124 -- did not change at all. A smaller, fully-
+;; deduplicated denominator producing a lower percentage against an unchanged
+;; numerator is the intended, harmless shape of a DRY-up, not "a genuinely-
+;; reachable branch lost its test" the note above warns about; confirmed by
+;; the arithmetic above before lowering this floor, not assumed from the
+;; refactor's intent alone.
+(defparameter +minimum-branch-coverage+ 81.4
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()

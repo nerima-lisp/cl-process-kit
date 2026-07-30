@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Unified three independent "poll until done or a deadline passes" loops --
+  `%wait-until-terminal` and `%wait-until-group-gone` (`src/communicate.lisp`)
+  and `%terminate-processes`'s pipeline-stage shutdown wait
+  (`src/pipeline.lisp`) -- into one shared `%poll-until` continuation-style
+  helper. Lowered the branch-coverage ratchet floor from 81.5% to 81.4% as a
+  direct, understood consequence: the dedup removed 4 branch points that were
+  redundant copies of each other (covered and total both dropped by exactly
+  4, so the actual count of uncovered branches did not change), not 4 newly
+  untested ones.
+
 ### Added
 
 - Three `cl-weave:defmatcher` custom matchers over `process-result`/
