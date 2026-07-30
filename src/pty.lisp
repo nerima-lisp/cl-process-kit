@@ -278,3 +278,18 @@ pipe, a test harness, CI)."
       (%native-close/checked (pty-process-fd process))
       (setf (pty-process-closed-p process) t)))
   (pty-process-result process))
+
+(defun call-with-pty-process (process continuation)
+  "Call CONTINUATION with PROCESS, then close it via PTY-CLOSE on the way
+out -- success or error. The continuation-passing core of WITH-PTY-PROCESS:
+the cleanup contract lives here once, as a plain function, and the macro
+below only supplies the syntax. Mirrors process-kit's own
+CALL-WITH-PROCESS/WITH-PROCESS idiom for the non-PTY PROCESS-HANDLE."
+  (unwind-protect (funcall continuation process)
+    (when process (ignore-errors (pty-close process)))))
+
+(defmacro with-pty-process ((variable form) &body body)
+  "Bind VARIABLE to FORM (a PTY-PROCESS) for BODY, then close it via
+PTY-CLOSE on the way out, success or error. Thin syntax over
+CALL-WITH-PTY-PROCESS."
+  `(call-with-pty-process ,form (lambda (,variable) (declare (ignorable ,variable)) ,@body)))

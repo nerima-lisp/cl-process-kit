@@ -42,6 +42,8 @@ cl-tty-kit.")
    #:pty-process-pid
    #:pty-close
    #:pty-cancel
+   #:call-with-pty-process
+   #:with-pty-process
 
    ;; byte and character transfer
    #:pty-read-octets

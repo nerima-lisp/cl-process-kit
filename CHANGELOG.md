@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `process-kit/pty:with-pty-process`/`call-with-pty-process`: the PTY
+  analogue of `with-process`/`call-with-process`'s continuation-passing
+  cleanup contract, binding a variable to a `spawn-pty` result for a body
+  and closing it via `pty-close` on the way out, success or error. The
+  main library had this idiom for `process-handle`; the PTY subsystem
+  never got the equivalent, so all 6 of `t/pty-test.lisp`'s cases
+  hand-rolled the identical `unwind-protect`/`pty-close` shape. Now they
+  read as `(with-pty-process (process (spawn-pty ...)) ...)`.
+
 - `cl-weave:it-fuzz` property (`t/property-test.lisp`): `run`'s `:replace`
   UTF-8 decoding path must never signal on arbitrary octet input, across
   100 generated trials, generalizing the 3 hand-picked malformed sequences

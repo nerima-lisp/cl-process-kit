@@ -46,6 +46,17 @@ returns the same result directly); it is `nil` beforehand.
   session-wide SIGTERM/SIGKILL the same way `communicate` does (see
   [Cancellation](cancellation.md)).
 - `pty-cancel` and `pty-close` are idempotent cleanup entry points.
+- `with-pty-process` binds a variable to a `spawn-pty` result for a body,
+  then closes it via `pty-close` on the way out, success or error --
+  the PTY analogue of [`with-process`](async.md#spawning-a-handle)'s
+  continuation-passing cleanup contract, backed by the exported
+  `call-with-pty-process` for callers that need the plain function.
+
+```lisp
+(process-kit/pty:with-pty-process
+    (process (process-kit/pty:spawn-pty (process-kit:make-command "/bin/sh" nil)))
+  (process-kit/pty:pty-write-string process (format nil "echo hi~%")))
+```
 
 !!! info "Independent of the event/task model"
 
