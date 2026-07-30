@@ -14,6 +14,7 @@ across several sister projects into a single, reusable library."
   :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on (:asdf :cl-boundary-kit :cl-log-kit)
+  :in-order-to ((test-op (test-op "cl-process-kit/test")))
   :pathname "src"
   :serial t
   :components
@@ -46,6 +47,9 @@ across several sister projects into a single, reusable library."
   :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on ("cl-process-kit" "cl-weave" "cl-log-kit")
+  :perform (test-op (op c)
+             (declare (ignore op c))
+             (uiop:symbol-call :cl-process-kit/test :run-tests))
   :pathname "t"
   :serial t
   :components
@@ -65,6 +69,7 @@ across several sister projects into a single, reusable library."
   :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on ("cl-process-kit" "cl-tty-kit")
+  :in-order-to ((test-op (test-op "cl-process-kit/pty-test")))
   :pathname "src"
   :serial t
   :components
@@ -81,6 +86,9 @@ across several sister projects into a single, reusable library."
   :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on ("cl-process-kit/pty" "cl-weave")
+  :perform (test-op (op c)
+             (declare (ignore op c))
+             (uiop:symbol-call :cl-process-kit/pty-test :run-tests))
   :pathname "t"
   :serial t
   :components

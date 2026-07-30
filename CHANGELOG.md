@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Standard ASDF `test-op` wiring: `(asdf:test-system :cl-process-kit)` and
+  `(asdf:test-system :cl-process-kit/pty)` now work directly, matching
+  `cl-weave` and `cl-boundary-kit`'s `:in-order-to ((test-op (test-op
+  "<system>/test")))` + `:perform (test-op ...)` convention (`cl-tty-kit`
+  wires the same capability a different way). `cl-process-kit.asd` had none
+  of this on any of its four systems before.
+
 - Docstrings for the primary public entry points that had none: `spawn`,
   `run`, `run-shell`, `run-command`, `run-pipeline`, `communicate-async`,
   `process-success-p`, and `pipeline-success-p`. Found by checking every
