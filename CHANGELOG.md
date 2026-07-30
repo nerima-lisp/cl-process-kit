@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Deduplicated `t/mutation-test.lisp`'s `process-success-p`/
+  `pipeline-success-p` case batteries: each was written out as an identical
+  literal twice (once for the direct "battery matches the live function"
+  assertion, once passed to the mutation-kill assertion), found by running
+  `paredit inspect similarity` over `t/` for the first time this session
+  (score 58.0, the top cross-location match). Named each battery a
+  top-level `defparameter` so both tests read from the same data and cannot
+  silently drift apart if a case is later added to only one.
 - Unified `await-process` and `next-process-event`'s (`src/async-task.lisp`)
   independent "wait on the task's condition variable, checking an optional
   deadline first" blocks into a shared `%wait-on-task` continuation, plus a

@@ -71,50 +71,44 @@ notice every one-operator change to the real implementation."
          (results (cl-weave:run-mutations body (%mutation-oracle lambda-list cases))))
     (cl-weave:assert-mutation-score results 1.0)))
 
+(defparameter +process-success-p-cases+
+  '((((make-process-result :status :exited :exit-code 0)) t)
+    (((make-process-result :status :exited :exit-code 0 :timed-out-p t)) nil)
+    (((make-process-result :status :exited :exit-code 0 :cancelled-p t)) nil)
+    (((make-process-result :status :signaled :exit-code 0)) nil)
+    (((make-process-result :status :exited :exit-code 1)) nil))
+  "Shared by both PROCESS-SUCCESS-P tests below: the live-function assertion
+and the mutation-kill assertion must agree on exactly the same cases, or a
+case added to only one silently stops proving what its describe block
+claims.")
+
+(defparameter +pipeline-success-p-cases+
+  '(((42) nil)
+    (((process-kit::make-pipeline-result :results nil)) t)
+    (((process-kit::make-pipeline-result :results nil :timed-out-p t)) nil)
+    (((process-kit::make-pipeline-result :results nil :cancelled-p t)) nil)
+    (((process-kit::make-pipeline-result
+       :results (list (make-process-result :status :exited :exit-code 0))))
+     t)
+    (((process-kit::make-pipeline-result
+       :results (list (make-process-result :status :exited :exit-code 1))))
+     nil))
+  "Shared by both PIPELINE-SUCCESS-P tests below; see +PROCESS-SUCCESS-P-CASES+.")
+
 (describe "src/command.lisp: PROCESS-SUCCESS-P mutation coverage"
   (it "the case battery matches the live function on every case"
     (cl-weave:with-soft-assertions
-      (dolist (case '((((make-process-result :status :exited :exit-code 0)) t)
-                       (((make-process-result :status :exited :exit-code 0 :timed-out-p t)) nil)
-                       (((make-process-result :status :exited :exit-code 0 :cancelled-p t)) nil)
-                       (((make-process-result :status :signaled :exit-code 0)) nil)
-                       (((make-process-result :status :exited :exit-code 1)) nil)))
+      (dolist (case +process-success-p-cases+)
         (destructuring-bind (argument-forms expected) case
           (expect (process-success-p (eval (first argument-forms))) :to-equal expected)))))
   (it "every mutation of PROCESS-SUCCESS-P's body is killed by the case battery"
-    (%assert-full-mutation-kill
-     "src/command.lisp" 'process-success-p
-     '((((make-process-result :status :exited :exit-code 0)) t)
-       (((make-process-result :status :exited :exit-code 0 :timed-out-p t)) nil)
-       (((make-process-result :status :exited :exit-code 0 :cancelled-p t)) nil)
-       (((make-process-result :status :signaled :exit-code 0)) nil)
-       (((make-process-result :status :exited :exit-code 1)) nil)))))
+    (%assert-full-mutation-kill "src/command.lisp" 'process-success-p +process-success-p-cases+)))
 
 (describe "src/command.lisp: PIPELINE-SUCCESS-P mutation coverage"
   (it "the case battery matches the live function on every case"
     (cl-weave:with-soft-assertions
-      (dolist (case '(((42) nil)
-                       (((process-kit::make-pipeline-result :results nil)) t)
-                       (((process-kit::make-pipeline-result :results nil :timed-out-p t)) nil)
-                       (((process-kit::make-pipeline-result :results nil :cancelled-p t)) nil)
-                       (((process-kit::make-pipeline-result
-                          :results (list (make-process-result :status :exited :exit-code 0))))
-                        t)
-                       (((process-kit::make-pipeline-result
-                          :results (list (make-process-result :status :exited :exit-code 1))))
-                        nil)))
+      (dolist (case +pipeline-success-p-cases+)
         (destructuring-bind (argument-forms expected) case
           (expect (pipeline-success-p (eval (first argument-forms))) :to-equal expected)))))
   (it "every mutation of PIPELINE-SUCCESS-P's body is killed by the case battery"
-    (%assert-full-mutation-kill
-     "src/command.lisp" 'pipeline-success-p
-     '(((42) nil)
-       (((process-kit::make-pipeline-result :results nil)) t)
-       (((process-kit::make-pipeline-result :results nil :timed-out-p t)) nil)
-       (((process-kit::make-pipeline-result :results nil :cancelled-p t)) nil)
-       (((process-kit::make-pipeline-result
-          :results (list (make-process-result :status :exited :exit-code 0))))
-        t)
-       (((process-kit::make-pipeline-result
-          :results (list (make-process-result :status :exited :exit-code 1))))
-        nil)))))
+    (%assert-full-mutation-kill "src/command.lisp" 'pipeline-success-p +pipeline-success-p-cases+)))
