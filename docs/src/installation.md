@@ -18,11 +18,16 @@ supported: the Nix flake, and a plain ASDF/local checkout.
     ```nix
     {
       inputs.cl-process-kit = {
-        url = "github:nerima-lisp/cl-process-kit";
+        url = "github:nerima-lisp/cl-process-kit/v1.0.1";
         inputs.nixpkgs.follows = "nixpkgs";
       };
     }
     ```
+
+    Pin a release tag rather than following the default branch, the same way
+    this project pins its own `cl-boundary-kit`/`cl-log-kit`/`cl-tty-kit`/
+    `cl-weave` inputs in `flake.nix` -- an unpinned `github:` reference tracks
+    whatever is on `main`, which can change under a consumer without warning.
 
     Pull the packaged system or devShell from
     `cl-process-kit.packages.<system>.cl-process-kit` /

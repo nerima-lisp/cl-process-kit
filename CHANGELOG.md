@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `README.md`'s install example pinned `v1.0.0`, one release behind the
+  actual latest tag (`v1.0.1`). `docs/src/installation.md`'s "As a flake
+  input" example was worse: an unpinned `github:nerima-lisp/cl-process-kit`
+  reference that tracks whatever is on `main`, directly contradicting the
+  README's own "consumers pin a release tag" guidance right next to it.
+  Both now pin `v1.0.1`, and installation.md explains why.
+
 ### Changed
 
 - `spawn`'s (`src/spawn.lisp`) two failure `handler-case` clauses each
