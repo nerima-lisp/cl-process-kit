@@ -11,11 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A new `nix flake check` gate, `noForbiddenMarkers`, that fails the build if
   `TODO`/`FIXME`/`XXX`/`adapter`/`backward-compat` ever appears in `src`,
-  `t`, `docs`, `README.md`, or `CHANGELOG.md`. These have been repeatedly
-  verified absent by hand across many refactoring passes; this turns that
-  one-off verification into a standing invariant CI enforces on every push,
-  the same way `run-tests.lisp`'s coverage ratchet turns a coverage target
-  into a gate instead of a number checked once and left to drift.
+  `t`, `docs`, or `README.md` (`CHANGELOG.md` is deliberately excluded, since
+  it legitimately describes fixing or preventing exactly these things --
+  this very entry included). These have been repeatedly verified absent by
+  hand across many refactoring passes; this turns that one-off verification
+  into a standing invariant CI enforces on every push, the same way
+  `run-tests.lisp`'s coverage ratchet turns a coverage target into a gate
+  instead of a number checked once and left to drift.
+- A `nix flake check` gate, `maxFileLength`, enforcing that no `src/`/`t/`
+  file exceeds 500 lines -- `cl-weave`'s own stated org guideline, adopted
+  verbatim (today's largest, `communicate.lisp`, is 294).
 - Standard ASDF `test-op` wiring: `(asdf:test-system :cl-process-kit)` and
   `(asdf:test-system :cl-process-kit/pty)` now work directly, matching
   `cl-weave` and `cl-boundary-kit`'s `:in-order-to ((test-op (test-op

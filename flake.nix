@@ -272,19 +272,49 @@
           # invariant CI enforces on every push, the same way the coverage
           # ratchet in run-tests.lisp turns a coverage target into a gate
           # instead of a number checked once and left to drift.
+          #
+          # CHANGELOG.md is deliberately excluded: it is a historical record
+          # that legitimately describes fixing or preventing exactly these
+          # things (this check's own changelog entry is the first example),
+          # which is not the same as one of them being left active in the
+          # tree.
           noForbiddenMarkers =
             pkgs.runCommand "cl-process-kit-no-forbidden-markers" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''
                 cd ${self}
                 if grep -rniE 'TODO|FIXME|XXX|adapter|backward.?compat' \
                     --include='*.lisp' --include='*.asd' --include='*.md' \
-                    src t docs README.md CHANGELOG.md; then
+                    src t docs README.md; then
                   echo "Forbidden marker found above -- this project keeps zero" >&2
                   echo "TODO/FIXME/XXX/adapter/backward-compat markers." >&2
                   exit 1
                 fi
                 touch "$out"
               '';
+
+          # No src/ or t/ file has ever needed to exceed this: the largest
+          # today is communicate.lisp at 294 lines. 500 is cl-weave's own
+          # stated org guideline (see its CHANGELOG's "no source file
+          # exceeds 500 lines" entry), adopted verbatim rather than
+          # inventing a different number -- a file crossing it is exactly
+          # the moment `paredit refactor split-file`/`move-form` should
+          # split it, the way async-task.lisp and run-test.lisp already
+          # were in earlier passes.
+          maxFileLength = pkgs.runCommand "cl-process-kit-max-file-length" { } ''
+            cd ${self}
+            over=0
+            for f in $(find src t -name '*.lisp'); do
+              lines=$(wc -l < "$f")
+              if [ "$lines" -gt 500 ]; then
+                echo "$f has $lines lines, over the 500-line guideline." >&2
+                over=1
+              fi
+            done
+            if [ "$over" -ne 0 ]; then
+              exit 1
+            fi
+            touch "$out"
+          '';
 
           # Fails `nix flake check` when any tracked Nix file is unformatted,
           # turning the formatter into an enforced CI gate rather than a habit.
