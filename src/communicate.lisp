@@ -93,7 +93,8 @@ is written down."
      :stderr-truncated-p (%capture-truncated-p stderr-capture))))
 
 (defun %communicate-base
-    (process &key input timeout (grace-period 1.0d0) (timeout-signal 15) (kill-signal 9)
+    (process &key input timeout (grace-period 1.0d0)
+               (timeout-signal +default-timeout-signal+) (kill-signal +default-kill-signal+)
                (on-timeout :error) (max-output-characters +default-output-limit+)
                (drain-timeout-seconds +default-drain-timeout-seconds+) (result-type :string)
                (external-format :default) (decoding-error-policy :replace)

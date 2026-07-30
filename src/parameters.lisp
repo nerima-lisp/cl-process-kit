@@ -30,6 +30,15 @@ clean stop for a descriptor closed under a live reader.")
 (defparameter +default-output-limit+ 1048576
   "Default MAX-OUTPUT-CHARACTERS: 1 MiB of captured output per stream.")
 
+(defparameter +default-timeout-signal+ 15
+  "Default TIMEOUT-SIGNAL: SIGTERM, sent to a child's process group when its
+deadline expires. RUN, RUN-COMMAND, COMMUNICATE, and COMMUNICATE-ASYNC all
+default to this same value; named here so the four copies can't drift.")
+
+(defparameter +default-kill-signal+ 9
+  "Default KILL-SIGNAL: SIGKILL, sent if a child's process group is still
+alive GRACE-PERIOD after +DEFAULT-TIMEOUT-SIGNAL+. See +DEFAULT-TIMEOUT-SIGNAL+.")
+
 (defparameter +default-drain-timeout-seconds+ 1.0d0
   "Default deadline for draining copier/feeder threads during cleanup.")
 

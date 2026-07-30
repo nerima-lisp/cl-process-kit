@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `+default-timeout-signal+` (15, SIGTERM) and `+default-kill-signal+` (9,
+  SIGKILL) in `src/parameters.lisp`, replacing bare `15`/`9` literals
+  repeated across `run`, `%communicate-base`, and `communicate-async`'s
+  three independent `&key` defaults. Found by grepping for the literals
+  directly rather than a tool flag; the same "name it once in
+  parameters.lisp" treatment the file's other shared defaults already get.
 - A new `nix flake check` gate, `noForbiddenMarkers`, that fails the build if
   `TODO`/`FIXME`/`XXX`/`adapter`/`backward-compat` ever appears in `src`,
   `t`, `docs`, or `README.md` (`CHANGELOG.md` is deliberately excluded, since
