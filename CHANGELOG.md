@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `.github/dependabot.yml`, `.github/CODEOWNERS`, `.github/pull_request_template.md`,
+  and `.github/ISSUE_TEMPLATE/` (bug report, feature request, and a config
+  linking to private security advisories), matching the convention already
+  present on 3 of the other 4 nerima-lisp sibling repos (`cl-weave`,
+  `cl-tty-kit`, `cl-log-kit`) that this repo had not yet adopted. Content is
+  scoped to this project rather than copied verbatim -- issue/PR templates
+  reference this repo's own `docs/src/development.md` and
+  `docs/src/reference/security-considerations.md` rather than sibling pages
+  that don't exist here. `SECURITY.md`/`CONTRIBUTING.md` are deliberately
+  not duplicated locally: this repo already relies on the org-wide
+  `nerima-lisp/.github` fallback for those two, same as `cl-weave` does.
+
 ### Changed
 
 - Raised the `run-tests.lisp` coverage ratchet's expression floor,

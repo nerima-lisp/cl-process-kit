@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security reporting
+    url: https://github.com/nerima-lisp/cl-process-kit/security/advisories/new
+    about: Report vulnerabilities through the private security contact path.
+  - name: Security considerations
+    url: https://github.com/nerima-lisp/cl-process-kit/blob/main/docs/src/reference/security-considerations.md
+    about: Check what counts as security-relevant before filing a public issue.
