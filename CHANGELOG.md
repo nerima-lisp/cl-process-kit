@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `%start-copier` and `%start-feeder`'s (`src/copier.lisp`) thread bodies
+  each independently caught any `ERROR` and recorded it as a
+  `PROCESS-IO-ERROR` on their own copier/feeder object, in identical shape
+  differing only in the object, the stream-name tag, and the work being
+  wrapped. Extracted the shared shape as a new `%run-copier-thread`
+  `defmacro` (a macro, not a function, since the wrapped work is an
+  arbitrary body of forms, not a single value) -- found by direct reading,
+  the same way `spawn`'s cleanup-pair dedup was.
+
 ### Fixed
 
 - `README.md`'s install example pinned `v1.0.0`, one release behind the

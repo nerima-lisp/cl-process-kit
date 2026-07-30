@@ -83,6 +83,18 @@ forfeit, which is precisely what blowing the drain deadline means."
       ((typep input 'sb-sys:fd-stream) (copy-fd-octets))
       (t (copy-characters)))))
 
+(defmacro %run-copier-thread (copier stream-name &body work)
+  "Run WORK as COPIER's thread body: any ERROR it signals is caught and
+recorded on COPIER as a PROCESS-IO-ERROR (tagged with STREAM-NAME, and
+honoring whether COPIER's stream was already force-closed) instead of
+letting the thread die silently. %START-COPIER and %START-FEEDER share this
+exact catch-and-record shape, differing only in what WORK actually does."
+  `(handler-case (progn ,@work)
+     (error (condition)
+       (setf (%copier-condition-after-forced-close-p ,copier) (%copier-forced-close-p ,copier)
+             (%copier-condition ,copier)
+             (make-condition 'process-io-error :stream ,stream-name :cause condition)))))
+
 (defun %start-copier (input capture stream-name)
   (when input
     (let ((copier (%make-copier))
@@ -90,13 +102,9 @@ forfeit, which is precisely what blowing the drain deadline means."
       (setf (%copier-thread copier)
             (sb-thread:make-thread
              (lambda ()
-               (handler-case (%copy-stream-bounded input capture stream-name event-sink
-                                                   (lambda () (%copier-stop-requested-p copier)))
-                 (error (condition)
-                   (setf (%copier-condition-after-forced-close-p copier)
-                         (%copier-forced-close-p copier)
-                         (%copier-condition copier)
-                         (make-condition 'process-io-error :stream stream-name :cause condition)))))
+               (%run-copier-thread copier stream-name
+                 (%copy-stream-bounded input capture stream-name event-sink
+                                       (lambda () (%copier-stop-requested-p copier)))))
              :name (format nil "process-kit ~A copier" stream-name)))
       copier)))
 
@@ -226,11 +234,7 @@ copier hit on its own, before any of this, are re-signalled at the end."
         (setf (%copier-thread feeder)
               (sb-thread:make-thread
                (lambda ()
-                 (handler-case (%write-process-input process input external-format)
-                   (error (condition)
-                     (setf (%copier-condition-after-forced-close-p feeder)
-                           (%copier-forced-close-p feeder)
-                           (%copier-condition feeder)
-                           (make-condition 'process-io-error :stream :stdin :cause condition)))))
+                 (%run-copier-thread feeder :stdin
+                   (%write-process-input process input external-format)))
                :name "cl-process-kit stdin feeder"))
         feeder))))
