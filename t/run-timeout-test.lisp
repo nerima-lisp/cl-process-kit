@@ -29,8 +29,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 (describe "run timeout and signal escalation"
   (it "run with on-timeout :return sets timed-out-p on a real timeout"
     (let ((result (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :return)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
-      (expect (process-success-p result) :to-be nil)))
+      (expect result :to-have-timed-out)
+      (expect-not result :to-have-succeeded)))
 
   (it "run with on-timeout :error signals process-timeout-error with the right slots"
     (signals process-timeout-error
@@ -44,7 +44,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
   (it "run escalates to SIGKILL when the child ignores SIGTERM"
     (let ((result (run "/bin/sh" (list "-c" "trap '' TERM; sleep 5")
                        :timeout 0.2 :grace-period 0.2 :on-timeout :return)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect result :to-have-timed-out)
       (expect (= (process-result-signal result) 9) :to-be-truthy)))
 
   (it "run's polling loop honors an injected CLOCK/SLEEPER without consuming real time"
@@ -55,7 +55,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
                        :clock (%make-jump-clock)
                        :sleeper (%counting-sleeper sleep-calls)))
            (elapsed-seconds (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect result :to-have-timed-out)
       ;; The fake clock reports the deadline as already passed on the very
       ;; first check, so the sleeper is never invoked and no real waiting for
       ;; TIMEOUT-SECONDS/GRACE-PERIOD-SECONDS happens.
@@ -66,7 +66,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
     (let* ((started (get-internal-real-time))
            (result (run "/bin/sh" (list "-c" "kill -STOP $$") :timeout 0.1 :grace-period 0.1 :on-timeout :return))
            (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect result :to-have-timed-out)
       (expect (< elapsed 2) :to-be-truthy)))
 
   (it "run cleans up the child when CLOCK signals an error"
@@ -113,7 +113,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
         (let ((result (process-timeout-error-result condition))
               (report (princ-to-string condition)))
           (expect (search "secret-argument" report) :to-be nil)
-          (expect (process-result-timed-out-p result) :to-be-truthy)
+          (expect result :to-have-timed-out)
           (expect (string= (process-result-stdout result) "partial") :to-be-truthy)))))
 
   ;; The copier read loop waits via poll(2) and checks %DRAIN-COPIERS' stop
@@ -136,7 +136,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
            (result (run "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
                        :input input :timeout 0.1 :grace-period 0.1 :on-timeout :return))
            (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect (process-result-timed-out-p result) :to-be-truthy)
+      (expect result :to-have-timed-out)
       (expect (= (process-result-signal result) 9) :to-be-truthy)
       (expect (< elapsed 2) :to-be-truthy))))
 
@@ -148,7 +148,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
         (cancel token)
         (let ((second (communicate process :cancellation-token token :on-cancel :return)))
           (expect (eq second first) :to-be-truthy)
-          (expect (process-result-cancelled-p second) :to-be nil)
+          (expect-not second :to-have-been-cancelled)
           (expect (cancellation-requested-p token) :to-be-truthy)))))
 
   (it "cancels a pipe-holding descendant after its leader exits"
@@ -159,7 +159,7 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
                         :cancellation-token token :grace-period 0.1d0 :on-cancel :return))
            (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
       (sb-thread:join-thread canceller)
-      (expect (process-result-cancelled-p result) :to-be-truthy)
+      (expect result :to-have-been-cancelled)
       (expect (string= (process-result-stdout result) "leader") :to-be-truthy)
       (expect (< elapsed 2) :to-be-truthy)))
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Three `cl-weave:defmatcher` custom matchers over `process-result`/
+  `pipeline-result` -- `:to-have-succeeded`, `:to-have-timed-out`, and
+  `:to-have-been-cancelled` -- registered in `t/package.lisp` via a shared
+  `%define-result-state-matcher` macro. Tests read
+  `(expect result :to-have-succeeded)` rather than
+  `(expect (process-success-p result) :to-be-truthy)` wherever the assertion
+  checks a result's terminal state as a fixed boolean.
+
 ### Changed
 
 - Bumped `cl-weave` v1.0.0 -> v1.1.0, `cl-boundary-kit` v0.6.0 -> v1.0.0

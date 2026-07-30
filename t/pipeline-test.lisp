@@ -6,7 +6,7 @@
   (it "run-pipeline streams stdout between stages"
     (let ((result (run-pipeline (list (make-command "printf" (list "abc") :search t)
                                       (make-command "tr" (list "a-z" "A-Z") :search t)))))
-      (expect (pipeline-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (string= (pipeline-result-stdout result) "ABC") :to-be-truthy)
       (expect (= (length (pipeline-result-results result)) 2) :to-be-truthy)))
 
@@ -15,7 +15,7 @@
            (result (run-pipeline (list (make-command "cat" nil :result-type :octets :search t)
                                        (make-command "cat" nil :result-type :octets :search t))
                                  :input octets)))
-      (expect (pipeline-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (equalp (pipeline-result-stdout result) octets) :to-be-truthy)))
 
   (it "run-pipeline/checked reports the first failed stage"
@@ -80,12 +80,13 @@
                (expect (integerp stage-index) :to-be-truthy)
                (expect (= (length (pipeline-result-results pipeline-result)) 2) :to-be-truthy)
                (expect (eq stage-result (nth stage-index (pipeline-result-results pipeline-result))) :to-be-truthy)
-               (expect (if (eq expected-kind :timeout)
-                           (and (process-result-timed-out-p stage-result) (pipeline-result-timed-out-p pipeline-result))
-                           (and (process-result-cancelled-p stage-result) (pipeline-result-cancelled-p pipeline-result)))
-                       :to-be-truthy)
-               (expect (process-success-p stage-result) :to-be nil)
-               (expect (pipeline-success-p pipeline-result) :to-be nil))))
+               (if (eq expected-kind :timeout)
+                   (progn (expect stage-result :to-have-timed-out)
+                          (expect pipeline-result :to-have-timed-out))
+                   (progn (expect stage-result :to-have-been-cancelled)
+                          (expect pipeline-result :to-have-been-cancelled)))
+               (expect-not stage-result :to-have-succeeded)
+               (expect-not pipeline-result :to-have-succeeded))))
       (handler-case
           (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "cat" nil :search t))
                         :timeout 0.1d0 :grace-period 0.1d0 :on-timeout :error)

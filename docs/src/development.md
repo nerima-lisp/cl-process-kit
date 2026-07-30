@@ -56,6 +56,17 @@ independently-reported case, not one aggregate pass/fail), and
 one-operator mutation of the live function body, not just execute every
 line -- coverage alone cannot prove that).
 
+`t/package.lisp` also registers three `cl-weave:defmatcher`s over
+`process-result`/`pipeline-result` --  `:to-have-succeeded`,
+`:to-have-timed-out`, and `:to-have-been-cancelled` -- via a small
+`%define-result-state-matcher` macro shared across all three, so a test
+reads `(expect result :to-have-succeeded)` rather than
+`(expect (process-success-p result) :to-be-truthy)`. Reach for one of these
+whenever an assertion is checking a result's terminal state as a plain
+boolean; write the raw predicate call directly, as `mutation-test.lisp` and
+`property-test.lisp` do, only where the assertion compares against a
+dynamically computed value rather than asserting a fixed known state.
+
 ## Running the suite on both platforms
 
 The suite is 179 tests. All of them run on macOS; seven are `it-skip`ped on

@@ -3,7 +3,8 @@
 (defpackage #:cl-process-kit/test
   (:use #:cl #:process-kit)
   (:shadowing-import-from #:cl-weave #:describe)
-  (:import-from #:cl-weave #:expect #:it #:signals #:run-all #:with-mocked-functions)
+  (:import-from #:cl-weave
+   #:expect #:expect-not #:it #:signals #:run-all #:with-mocked-functions #:defmatcher)
   (:export #:run-tests #:+suite-complete-p+))
 
 ;;; The cl-process-kit/pty-test system's package. It lives here rather than in
@@ -62,3 +63,31 @@ had to mean something."
 generic 'give me a process that stays alive until I signal/kill/time it
 out' fixture every timeout/cancellation/process-group edge-case test needs."
   (spawn "sleep" (list seconds) :search t :environment (sb-ext:posix-environ)))
+
+(defmacro %define-result-state-matcher (name description process-predicate pipeline-predicate)
+  "Register a cl-weave matcher over a `process-result' or `pipeline-result',
+dispatching to whichever of PROCESS-PREDICATE/PIPELINE-PREDICATE fits ACTUAL's
+type. Every one of this library's result-state matchers (success, timeout,
+cancellation) has this exact shape -- a matcher takes no :EXPECTED value, and
+`process-result'/`pipeline-result' each track the same state under
+differently-named accessors -- so the boilerplate lives here once instead of
+being repeated per matcher."
+  `(defmatcher ,name (actual expected)
+     ,description
+     (unless (null expected)
+       (error "cl-process-kit: ~S takes no expected value, got ~S." ',name expected))
+     (etypecase actual
+       (pipeline-result (,pipeline-predicate actual))
+       (process-result (,process-predicate actual)))))
+
+(%define-result-state-matcher :to-have-succeeded
+  "the process or pipeline result to have succeeded"
+  process-success-p pipeline-success-p)
+
+(%define-result-state-matcher :to-have-timed-out
+  "the process or pipeline result to have timed out"
+  process-result-timed-out-p pipeline-result-timed-out-p)
+
+(%define-result-state-matcher :to-have-been-cancelled
+  "the process or pipeline result to have been cancelled"
+  process-result-cancelled-p pipeline-result-cancelled-p)

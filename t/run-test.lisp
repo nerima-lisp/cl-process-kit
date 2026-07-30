@@ -35,13 +35,13 @@
       (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
       (let ((result (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
                                  :input input :cancellation-token token :grace-period 0.1d0 :on-cancel :return)))
-        (expect (process-result-cancelled-p result) :to-be-truthy)
+        (expect result :to-have-been-cancelled)
         (expect (= (process-result-signal result) 9) :to-be-truthy)
-        (expect (process-success-p result) :to-be nil))))
+        (expect-not result :to-have-succeeded))))
 
   (it "run-command/checked returns a successful command result"
     (let ((result (run-command/checked (make-command "/bin/sh" (list "-c" "printf ok")))))
-      (expect (process-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (string= (process-result-stdout result) "ok") :to-be-truthy)))
 
   (it "run-command/checked signals process-exit-error"
@@ -65,7 +65,7 @@
     (let ((result (run "echo" (list "hello") :search t)))
       (expect (= (process-result-exit-code result) 0) :to-be-truthy)
       (expect (string= (process-result-stdout result) (format nil "hello~%")) :to-be-truthy)
-      (expect (process-result-timed-out-p result) :to-be nil)
+      (expect-not result :to-have-timed-out)
       (expect (process-result-signal result) :to-be nil)))
 
   (it "run reports a non-zero exit-code"
@@ -75,7 +75,7 @@
   (cl-weave:it-property "run reports exactly the requested exit code, for any code in [0, 255]"
       ((code (cl-weave:gen-integer :min 0 :max 255)))
     (let ((result (run "/bin/sh" (list "-c" (format nil "exit ~D" code)))))
-      (expect (process-result-timed-out-p result) :to-be nil)
+      (expect-not result :to-have-timed-out)
       (expect (= (process-result-exit-code result) code) :to-be-truthy)
       (expect (process-success-p result) :to-equal (zerop code))))
 

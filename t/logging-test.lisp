@@ -109,4 +109,4 @@ LOG-KIT records it emitted, in emission order."
     (let ((*process-logger* nil))
       ;; A direct sanity check that the default path allocates no records:
       ;; CAPTURING-LOG rebinds the logger, so we assert against a plain run here.
-      (expect (process-success-p (run "echo" (list "quiet") :search t)) :to-be-truthy))))
+      (expect (run "echo" (list "quiet") :search t) :to-have-succeeded))))

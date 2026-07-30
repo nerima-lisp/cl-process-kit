@@ -156,7 +156,7 @@
                           (list "-c" "trap \"exit 0\" TERM; (trap \"\" TERM; sleep 5) & wait")
                           :output :stream :error :stream)))
       (let ((result (communicate process :timeout 0.1 :grace-period 0.1 :on-timeout :return)))
-        (expect (process-result-timed-out-p result) :to-be-truthy)
+        (expect result :to-have-timed-out)
         (expect (process-kit::%process-group-alive-p process) :to-be nil))))
 
   (it "close-process kills descendants after their leader exits"

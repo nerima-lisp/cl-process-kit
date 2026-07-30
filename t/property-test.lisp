@@ -16,7 +16,7 @@
       ((bytes (cl-weave:gen-vector (cl-weave:gen-integer :min 0 :max 255) :max-length 48)))
     (let* ((input (coerce bytes '(vector (unsigned-byte 8))))
            (result (run "cat" nil :input input :result-type :octets :search t)))
-      (expect (process-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (coerce (process-result-stdout result) 'list) :to-equal (coerce bytes 'list))))
 
   (cl-weave:it-property "make-command preserves and deep-copies NUL-free string arguments"

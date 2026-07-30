@@ -29,7 +29,7 @@
     (call-with-streamed-input
      'character (lambda (out) (write-string "streamed-chars" out)) :string
      (lambda (result)
-       (expect (process-success-p result) :to-be-truthy)
+       (expect result :to-have-succeeded)
        (expect (process-result-stdout result) :to-equal "streamed-chars"))))
 
   (it "feeds a child from a binary-stream input without re-encoding"
@@ -37,7 +37,7 @@
       (call-with-streamed-input
        '(unsigned-byte 8) (lambda (out) (write-sequence bytes out)) :octets
        (lambda (result)
-         (expect (process-success-p result) :to-be-truthy)
+         (expect result :to-have-succeeded)
          (expect (coerce (process-result-stdout result) 'list) :to-equal (coerce bytes 'list)))))))
 
 ;;; --- PROCESS-HANDLE query edge arms --------------------------------------
@@ -81,17 +81,17 @@
 (describe "UTF-8 decoding edge arms"
   (it "replaces a UTF-16 surrogate three-byte sequence rather than decoding it"
     (let ((result (run-raw-bytes "\\355\\240\\200")))   ; ED A0 80 -> surrogate D800
-      (expect (process-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (find #\Replacement_Character (process-result-stdout result)) :to-be-truthy)))
 
   (it "replaces an overlong three-byte sequence rather than decoding it"
     (let ((result (run-raw-bytes "\\340\\200\\200")))   ; E0 80 80 -> overlong NUL
-      (expect (process-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (find #\Replacement_Character (process-result-stdout result)) :to-be-truthy)))
 
   (it "replaces an out-of-range four-byte lead rather than decoding it"
     (let ((result (run-raw-bytes "\\364\\220\\200\\200"))) ; F4 90 80 80 -> > U+10FFFF
-      (expect (process-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (find #\Replacement_Character (process-result-stdout result)) :to-be-truthy))))
 
 ;;; --- copier fault injection ----------------------------------------------

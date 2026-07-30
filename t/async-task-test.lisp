@@ -62,7 +62,7 @@
       (unwind-protect
            (let ((result (await-process task :timeout 3d0)))
              (expect result :to-be-truthy)
-             (expect (process-result-cancelled-p result) :to-be-truthy)
+             (expect result :to-have-been-cancelled)
              (expect (task-state task) :to-be :cancelled)
              (expect (task-condition task) :to-be nil)
              (expect (= 1 (count :terminal (process-events task) :key (function process-event-kind))) :to-be-truthy))
@@ -105,7 +105,7 @@
                  (cancel-process task)
                  (let ((result (await-process task :timeout 2d0)))
                    (expect result :to-be-truthy)
-                   (expect (process-result-cancelled-p result) :to-be-truthy))
+                   (expect result :to-have-been-cancelled))
                  (expect (= 1 (count :terminal seen)) :to-be-truthy)
                  (expect (thread-stops-p (process-kit::%process-task-worker task)) :to-be-truthy)
                  (expect (thread-stops-p (process-kit::%process-task-dispatcher task)) :to-be-truthy)
@@ -130,7 +130,7 @@
   (it "streams output and closes streams on the terminal event"
     (let* ((task (run-command-async (make-command "/bin/sh" (list "-c" "printf out; printf err >&2"))))
            (result (await-process task)))
-      (expect (process-success-p result) :to-be-truthy)
+      (expect result :to-have-succeeded)
       (expect (string= (process-result-stdout result) "out") :to-be-truthy)
       (expect (string= (process-result-stderr result) "err") :to-be-truthy)))
 
