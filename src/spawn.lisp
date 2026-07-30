@@ -106,43 +106,48 @@ this function returns."
 (defun spawn (command arguments &key (search nil) input output error environment directory
                                    (external-format :default) status-hook preserve-fds fd-limit)
   (let ((raw nil) (requested-command command))
-    (handler-case
-        (progn
-          (%validate-spawn-inputs command arguments environment)
-          (%ensure (not (eq input t)) "INPUT T cannot safely isolate the child process group.")
-          (%ensure (or (null fd-limit) (and (integerp fd-limit) (plusp fd-limit)))
-                   "FD-LIMIT must be NIL or a positive integer.")
-          (when search
-            (setf command (%resolve-executable command arguments environment directory)))
-          (setf raw
-                (call-with-spawn-fd-limit
-                 fd-limit
-                 (lambda ()
-                   (sb-ext:run-program
-                    command arguments :search nil :input input :output output
-                    :error error :environment environment :directory directory
-                    :external-format external-format :status-hook status-hook
-                    :preserve-fds preserve-fds :wait nil :use-posix-spawn nil))))
-          (let* ((pid (sb-ext:process-pid raw))
-                 (pgid (with-posix-errno-case (sb-posix:getpgid pid)
-                         (sb-posix:esrch pid))))
-            (unless (= pid pgid)
-              (error 'process-group-isolation-error :pid pid :pgid pgid))
-            (%log :info "process spawned" :program command :pid pid :pgid pgid)
-            (%make-process-handle
-             :raw-process raw :pid pid :pgid pgid :program command
-             :arguments (copy-list arguments) :directory directory
-             :started-at (coerce (get-internal-real-time) 'double-float))))
-      (process-error (condition)
-        (%log :warn "process launch failed" :program requested-command :condition condition)
-        (%cleanup-failed-spawn raw)
-        (error condition))
-      (error (condition)
-        (%log :warn "process launch failed" :program requested-command :condition condition)
-        (%cleanup-failed-spawn raw)
-        (error 'process-launch-error
-               :program requested-command :arguments (copy-list arguments)
-               :directory directory :cause condition)))))
+    (flet ((abort-spawn (condition)
+             "Both HANDLER-CASE clauses below reach this on any failure past
+RAW's assignment: log it and clean up whatever RUN-PROGRAM already started
+before re-signaling. What they re-signal AS differs, which is why only that
+part stays in each clause."
+             (%log :warn "process launch failed" :program requested-command :condition condition)
+             (%cleanup-failed-spawn raw)))
+      (handler-case
+          (progn
+            (%validate-spawn-inputs command arguments environment)
+            (%ensure (not (eq input t)) "INPUT T cannot safely isolate the child process group.")
+            (%ensure (or (null fd-limit) (and (integerp fd-limit) (plusp fd-limit)))
+                     "FD-LIMIT must be NIL or a positive integer.")
+            (when search
+              (setf command (%resolve-executable command arguments environment directory)))
+            (setf raw
+                  (call-with-spawn-fd-limit
+                   fd-limit
+                   (lambda ()
+                     (sb-ext:run-program
+                      command arguments :search nil :input input :output output
+                      :error error :environment environment :directory directory
+                      :external-format external-format :status-hook status-hook
+                      :preserve-fds preserve-fds :wait nil :use-posix-spawn nil))))
+            (let* ((pid (sb-ext:process-pid raw))
+                   (pgid (with-posix-errno-case (sb-posix:getpgid pid)
+                           (sb-posix:esrch pid))))
+              (unless (= pid pgid)
+                (error 'process-group-isolation-error :pid pid :pgid pgid))
+              (%log :info "process spawned" :program command :pid pid :pgid pgid)
+              (%make-process-handle
+               :raw-process raw :pid pid :pgid pgid :program command
+               :arguments (copy-list arguments) :directory directory
+               :started-at (coerce (get-internal-real-time) 'double-float))))
+        (process-error (condition)
+          (abort-spawn condition)
+          (error condition))
+        (error (condition)
+          (abort-spawn condition)
+          (error 'process-launch-error
+                 :program requested-command :arguments (copy-list arguments)
+                 :directory directory :cause condition))))))
 
 (defun %environment-key (entry)
   (let ((position (position #\= entry)))

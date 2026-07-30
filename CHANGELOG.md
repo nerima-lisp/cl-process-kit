@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `spawn`'s (`src/spawn.lisp`) two failure `handler-case` clauses each
+  repeated the same "log the failure, clean up whatever `RUN-PROGRAM`
+  already started" pair of calls before re-signaling in their own,
+  different way. Extracted the shared pair into a local `abort-spawn` `flet`,
+  found by reading the function directly rather than a tool flag (its span
+  is too small for `paredit inspect similarity`'s default `node_count`
+  threshold to surface).
 - Bumped four SHA-pinned GitHub Actions that had real, unclaimed releases
   sitting upstream: `softprops/action-gh-release` v2.6.2 -> v3.0.2 (Node 24
   runtime only; no input/output change), `actions/configure-pages` v5 ->
