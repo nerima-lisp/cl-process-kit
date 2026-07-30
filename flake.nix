@@ -26,11 +26,11 @@
     # default branch, so an upstream push to main would break this repo's CI
     # without warning.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v1.0.0";
+      url = "github:nerima-lisp/cl-weave/v1.1.0";
       flake = false;
     };
     cl-boundary-kit = {
-      url = "github:nerima-lisp/cl-boundary-kit/v0.6.0";
+      url = "github:nerima-lisp/cl-boundary-kit/v1.0.0";
       flake = false;
     };
     cl-log-kit = {
@@ -38,13 +38,13 @@
       flake = false;
     };
     cl-tty-kit = {
-      # git+https with submodules=1 (NOT github:, which uses GitHub's tarball
-      # API and silently drops submodules regardless of the query string) --
-      # cl-tty-kit v0.6.0 vendors nerima-lisp/cl-prolog as a git submodule
-      # (vendor/cl-prolog), and its own .asd self-registers that path, so a
-      # submodule-less fetch leaves ASDF unable to resolve the "cl-tty-kit"
-      # system's :cl-prolog dependency.
-      url = "git+https://github.com/nerima-lisp/cl-tty-kit?ref=refs/tags/v0.6.0&submodules=1";
+      # Plain github: (not git+https with submodules=1): cl-tty-kit no longer
+      # vendors nerima-lisp/cl-prolog as a git submodule as of v1.0.0 -- it is
+      # now a regular top-level nerima-lisp package that only :CL-TTY-KIT/TEST
+      # depends on, never :CL-TTY-KIT itself. This flake only ever builds the
+      # base :cl-tty-kit system (see the `cl-process-kit/pty` .asd system), so
+      # cl-prolog is not part of this dependency graph at all.
+      url = "github:nerima-lisp/cl-tty-kit/v1.0.2";
       flake = false;
     };
 

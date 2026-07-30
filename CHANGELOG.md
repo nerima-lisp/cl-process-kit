@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Bumped `cl-weave` v1.0.0 -> v1.1.0, `cl-boundary-kit` v0.6.0 -> v1.0.0
+  (both stable releases with no behavior change to the surface this library
+  calls; verified against each release's own `CHANGELOG.md`).
+- Bumped `cl-tty-kit` v0.6.0 -> v1.0.2 and, since v1.0.0, simplified the
+  `flake.nix` input from `git+https://...?submodules=1` back to a plain
+  `github:` reference: `cl-tty-kit` no longer vendors `nerima-lisp/cl-prolog`
+  as a git submodule, and `cl-prolog` is now a regular top-level nerima-lisp
+  package depended on only by `cl-tty-kit/test`, which this repository's
+  `cl-process-kit/pty` system (depending on plain `cl-tty-kit`) never loads.
+
 ## [1.0.1] - 2026-07-26
 
 A packaging fix. No source change, and the exported API is identical to 1.0.0.
