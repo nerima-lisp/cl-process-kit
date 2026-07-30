@@ -6,20 +6,21 @@
     # release tests pass, so it is less likely to land a broken build.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # These four nerima-lisp packages are consumed purely as raw ASDF source
-    # trees (buildASDFSystem `src`, or CL_SOURCE_REGISTRY at runtime) --
-    # this flake never touches any of their own `packages`/`checks` outputs.
-    # `flake = false` fetches just the source and skips evaluating each
-    # package's own flake.nix, so their transitive dev-only inputs (e.g.
-    # cl-weave's treefmt-nix, cl-boundary-kit/cl-log-kit's cl-json-kit) never
-    # enter this flake's lock file.
+    # These four nerima-lisp packages are consumed as raw ASDF source trees
+    # (cl-nix-forge `lispDerivation` `src`, or CL_SOURCE_REGISTRY at
+    # runtime) -- this flake never touches any of their own
+    # `packages`/`checks` outputs. `flake = false` fetches just the source
+    # and skips evaluating each package's own flake.nix, so their
+    # transitive dev-only inputs (e.g. cl-weave's treefmt-nix,
+    # cl-boundary-kit/cl-log-kit's cl-json-kit) never enter this flake's
+    # lock file.
     #
     # That is also why these four carry no `inputs.nixpkgs.follows`: the org
     # standard mandates it so an input cannot drag in a second nixpkgs, but a
     # `flake = false` input has no inputs of its own to redirect. Writing the
     # line here would resolve to nothing and only suggest to a reader that
-    # something is being overridden. treefmt-nix below is the one real flake
-    # input, and it does carry it.
+    # something is being overridden. treefmt-nix and cl-nix-forge below are
+    # the two real flake inputs, and they do carry it.
     #
     # Every sibling is pinned to a release tag, never a bare
     # `github:nerima-lisp/<name>`: a bare reference follows that repo's
@@ -53,11 +54,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # The org's shared Nix/ASDF library (cl-nix-forge.lib.<system>). Used here
-    # only for its `.asd` :version lexer (`fromAsdSystem`), not for
-    # `mkPackageFlake` -- this repo's native C compilation (native/spawn.c,
-    # native/pty.c) and multiple custom check derivations have no adopted
-    # precedent elsewhere in the org yet to migrate the whole flake against.
+    # The org's shared Nix/ASDF-derivation library (cl-nix-forge.lib.<system>).
+    # Builds every ASDF-based package/check below via its `lispDerivation`/
+    # `mkScriptCheck` primitives instead of nixpkgs' own `sbcl.buildASDFSystem`
+    # plus hand-rolled `pkgs.runCommand` test derivations. The custom checks
+    # with no ASDF involvement at all (`noForbiddenMarkers`, `maxFileLength`,
+    # `formatting`, `docs`) stay exactly as they were -- cl-nix-forge has
+    # nothing to offer a plain grep/wc/treefmt/mkdocs derivation.
     cl-nix-forge = {
       url = "github:nerima-lisp/cl-nix-forge/v0.4.0";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -82,7 +85,6 @@
         "aarch64-darwin"
       ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
-      sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
 
       # cl-nix-forge's dedicated .asd :version lexer, replacing this flake's
       # own hand-rolled line-by-line regex. `cl-nix-forge.lib` is per-system,
@@ -109,6 +111,22 @@
       # string to the source it labels.
       clBoundaryKitVersion = cl.fromAsdSystem "${cl-boundary-kit}/cl-boundary-kit.asd";
       clLogKitVersion = cl.fromAsdSystem "${cl-log-kit}/cl-log-kit.asd";
+      clTtyKitVersion = cl.fromAsdSystem "${cl-tty-kit}/cl-tty-kit.asd";
+      clWeaveVersion = cl.fromAsdSystem "${cl-weave}/cl-weave.asd";
+
+      # `native/` (C sources for the spawn trampoline and the PTY backend)
+      # and `t/native-spawn-test.sh` (a non-Lisp check driven directly, not
+      # through run-tests.lisp) are the only things this build reads beyond
+      # `mkLispSource`'s `.asd`/`.lisp` allowlist default.
+      lispSrc =
+        pkgs:
+        cl-nix-forge.lib.${pkgs.system}.mkLispSource {
+          root = ./.;
+          include = [
+            ./native
+            ./t/native-spawn-test.sh
+          ];
+        };
 
       # treefmt drives `nix fmt` and the `checks.<system>.formatting` gate.
       # Scope is Nix only: nixfmt is a low-diff, zero-footgun formatter,
@@ -151,61 +169,192 @@
             license = pkgs.lib.licenses.mit;
           };
         };
+
+      # Shared C compiler flags for both native artifacts, named once so the
+      # checkout-tests check (which compiles spawn.c a second time, into a
+      # throwaway build-sandbox path rather than $out, to get
+      # CL_PROCESS_KIT_SPAWN pointed at a binary before run-tests.lisp starts)
+      # cannot drift from what packages.cl-process-kit itself ships.
+      spawnCflags = "-std=c11 -O2 -Wall -Wextra -Werror";
+
+      # Every ASDF-based derivation for one `system`: the two nerima-lisp
+      # runtime dependencies, the cl-weave check-time dependency, the two
+      # native artifacts, and cl-process-kit's own two ASDF systems built on
+      # top of them. Centralized so `packages` and `checks` build the exact
+      # same derivations rather than two independently-evaluated copies that
+      # could disagree.
+      lispPackagesFor =
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          clForSystem = cl-nix-forge.lib.${system};
+          src = lispSrc pkgs;
+
+          # Raw flake-input source, not `mkLispSource`-filtered: these four
+          # are external inputs this flake never builds `sbcl --script
+          # run-tests.lisp` against locally, so there is no stray
+          # `.fasl`/`coverage-report-*/` artifact to filter out the way
+          # `lispSrc` above filters THIS repo's own working tree. `mkLispSource`
+          # also only accepts a genuine Nix path for `root`, not a flake
+          # input's own `outPath` attrset (only `self` is special-cased to
+          # work directly) -- passing the input straight through as `src`,
+          # the same way `pkgs.sbcl.buildASDFSystem` accepted it before this
+          # migration, sidesteps that entirely.
+          clBoundaryKit = clForSystem.lispDerivation {
+            lispSystem = "cl-boundary-kit";
+            version = clBoundaryKitVersion;
+            src = cl-boundary-kit;
+            lispDependencies = [ clLogKit ];
+          };
+          clLogKit = clForSystem.lispDerivation {
+            lispSystem = "cl-log-kit";
+            version = clLogKitVersion;
+            src = cl-log-kit;
+          };
+          clTtyKit = clForSystem.lispDerivation {
+            lispSystem = "cl-tty-kit";
+            version = clTtyKitVersion;
+            src = cl-tty-kit;
+          };
+          # Check-only: never enters packages.cl-process-kit's own
+          # lispDependencies, only lispCheckDependencies below.
+          clWeave = clForSystem.lispDerivation {
+            lispSystem = "cl-weave";
+            version = clWeaveVersion;
+            src = cl-weave;
+          };
+
+          # native/pty.c as a plain stdenv.mkDerivation (no Lisp of its own),
+          # marked so any lispDerivation naming it in `nativeLibraries` gets
+          # LD_LIBRARY_PATH/DYLD_LIBRARY_PATH wired in automatically -- what
+          # this flake used to hand-copy into three separate places
+          # (packages.cl-process-kit-pty, checks.pty-tests, and nowhere for
+          # `nix develop`, which could never load the PTY backend at all).
+          ptyNativeLibrary = clForSystem.markNativeLibrary (
+            pkgs.stdenv.mkDerivation {
+              pname = "cl-process-kit-pty-native";
+              inherit version;
+              src = pkgs.lib.fileset.toSource {
+                root = ./.;
+                fileset = ./native;
+              };
+              nativeBuildInputs = [ pkgs.stdenv.cc ];
+              buildPhase = ''
+                runHook preBuild
+                cc -O2 -fPIC -shared native/pty.c \
+                  -o libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary} \
+                  ${pkgs.lib.optionalString pkgs.stdenv.isLinux "-lutil"}
+                runHook postBuild
+              '';
+              installPhase = ''
+                runHook preInstall
+                mkdir -p "$out/lib"
+                cp libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary} "$out/lib/"
+                runHook postInstall
+              '';
+            }
+          );
+
+          # The checked-out spawn binary lives at packages.cl-process-kit's
+          # own $out/bin (below); this is the SAME compile, but into the
+          # writable build sandbox rather than $out, so a check's `preCheck`
+          # can point CL_PROCESS_KIT_SPAWN at it before run-tests.lisp/
+          # t/native-spawn-test.sh ever run -- checking the packaged binary
+          # itself would need it already built, which is exactly what the
+          # check is trying to verify.
+          compileSpawnToBuildTree = ''
+            cc ${spawnCflags} native/spawn.c -o "$NIX_BUILD_TOP/cl-process-kit-spawn"
+            export CL_PROCESS_KIT_SPAWN="$NIX_BUILD_TOP/cl-process-kit-spawn"
+          '';
+
+          clProcessKit = clForSystem.lispDerivation {
+            lispSystem = "cl-process-kit";
+            inherit version src;
+            lispDependencies = [
+              clBoundaryKit
+              clLogKit
+            ];
+            lispCheckDependencies = [ clWeave ];
+            # perl/coreutils are check-only (t/native-spawn-test.sh's own
+            # shebang and its use of `perl -e` for a raw-mode/fd assertion),
+            # but `nativeBuildInputs` is not itself doCheck-scoped, so they
+            # ride along on the plain package build too rather than needing
+            # a second, check-specific derivation to carry them.
+            nativeBuildInputs = [
+              pkgs.stdenv.cc
+              pkgs.perl
+              pkgs.coreutils
+            ];
+            # Ships the real trampoline binary in the distributed package;
+            # the check derivation below additionally compiles its own copy
+            # into the build sandbox (see compileSpawnToBuildTree) because a
+            # check needs the binary to exist BEFORE its own build/install
+            # phases -- which is what building it produces -- have run.
+            postInstall = ''
+              mkdir -p "$out/bin"
+              cc ${spawnCflags} native/spawn.c -o "$out/bin/cl-process-kit-spawn"
+            '';
+            preCheck = ''
+              ${compileSpawnToBuildTree}
+              timeout 30 sh t/native-spawn-test.sh "$CL_PROCESS_KIT_SPAWN"
+            '';
+            # Coverage is a ratchet, not a one-off report: run-tests.lisp
+            # fails the build itself if src/ coverage regresses below the
+            # +minimum-*-coverage+ floors it tracks, so CI is the enforcement
+            # point, not just a local opt-in convenience.
+            # CL_PROCESS_KIT_COVERAGE_DAT redirects coverage.dat into this
+            # derivation's own writable build sandbox rather than the
+            # read-only Nix store path run-tests.lisp lives under -- this
+            # env is doCheck-scoped, so it never touches the plain build.
+            env = {
+              CL_PROCESS_KIT_COVERAGE = "1";
+              CL_PROCESS_KIT_COVERAGE_DAT = "coverage.dat";
+            };
+          };
+
+          clProcessKitPty = clForSystem.lispDerivation {
+            lispSystem = "cl-process-kit/pty";
+            pname = "cl-process-kit-pty";
+            inherit version src;
+            lispDependencies = [
+              clProcessKit
+              clTtyKit
+            ];
+            lispCheckDependencies = [ clWeave ];
+            # `nativeLibraries` alone is not enough here: src/pty.lisp reads
+            # CL_PROCESS_KIT_PTY_LIBRARY explicitly (an SB-ALIEN
+            # LOAD-SHARED-OBJECT call needs a real path, not a bare SONAME
+            # resolved off LD_LIBRARY_PATH/DYLD_LIBRARY_PATH), and does so at
+            # LOAD time -- defining the alien routine bindings needs the
+            # library present during the build's own compile phase, not just
+            # at eventual runtime. Kept `nativeLibraries` too since it is
+            # harmless and is what any FUTURE consumer three hops away would
+            # need if it only `dlopen`s the bare name.
+            nativeLibraries = [ ptyNativeLibrary ];
+            env = {
+              CL_PROCESS_KIT_PTY_LIBRARY = "${ptyNativeLibrary}/lib/libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}";
+            };
+          };
+        in
+        {
+          inherit
+            clProcessKit
+            clProcessKitPty
+            ;
+        };
     in
     {
       packages = forAllSystems (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          clBoundaryKit = pkgs.sbcl.buildASDFSystem {
-            pname = "cl-boundary-kit";
-            version = clBoundaryKitVersion;
-            src = cl-boundary-kit;
-            systems = [ "cl-boundary-kit" ];
-            lispLibs = [ clLogKit ];
-          };
-          clLogKit = pkgs.sbcl.buildASDFSystem {
-            pname = "cl-log-kit";
-            version = clLogKitVersion;
-            src = cl-log-kit;
-            systems = [ "cl-log-kit" ];
-          };
+          lisp = lispPackagesFor system;
         in
-        rec {
-          cl-process-kit = pkgs.sbcl.buildASDFSystem {
-            pname = "cl-process-kit";
-            inherit version;
-            src = self;
-            systems = [ "cl-process-kit" ];
-            lispLibs = [
-              clBoundaryKit
-              clLogKit
-            ];
-            nativeBuildInputs = [ pkgs.stdenv.cc ];
-            postInstall = ''
-              mkdir -p "$out/bin"
-              cc -std=c11 -O2 -Wall -Wextra -Werror \
-                "$src/native/spawn.c" -o "$out/bin/cl-process-kit-spawn"
-            '';
-          };
-          cl-process-kit-pty = pkgs.stdenv.mkDerivation {
-            pname = "cl-process-kit-pty";
-            inherit version;
-            src = self;
-            nativeBuildInputs = [ pkgs.sbcl ];
-            buildPhase = ''
-              cc -O2 -fPIC -shared native/pty.c \
-                -o libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary} \
-                ${pkgs.lib.optionalString pkgs.stdenv.isLinux "-lutil"}
-            '';
-            installPhase = ''
-              mkdir -p "$out/lib" "$out/share/common-lisp/source/cl-process-kit"
-              cp libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary} "$out/lib/"
-              cp -R cl-process-kit.asd src "$out/share/common-lisp/source/cl-process-kit/"
-            '';
-          };
+        {
+          cl-process-kit = lisp.clProcessKit;
+          cl-process-kit-pty = lisp.clProcessKitPty;
           docs = mkDocs pkgs;
-          default = cl-process-kit;
+          default = lisp.clProcessKit;
         }
       );
 
@@ -219,58 +368,27 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          clForSystem = cl-nix-forge.lib.${system};
+          lisp = lispPackagesFor system;
         in
         rec {
-          checkout-tests =
-            pkgs.runCommand "cl-process-kit-checkout-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.sbcl
-                  pkgs.stdenv.cc
-                  pkgs.perl
-                  pkgs.coreutils
-                ];
-                CL_SOURCE_REGISTRY = sourceRegistry;
-                # Coverage is a ratchet, not a one-off report: run-tests.lisp
-                # fails the build itself if src/ coverage regresses below the
-                # +minimum-*-coverage+ floors it tracks, so CI is the
-                # enforcement point, not just a local opt-in convenience.
-                # CL_PROCESS_KIT_COVERAGE_DAT redirects coverage.dat away from
-                # $self (the read-only Nix store path run-tests.lisp itself
-                # lives under) into this derivation's writable build sandbox.
-                CL_PROCESS_KIT_COVERAGE = "1";
-                CL_PROCESS_KIT_COVERAGE_DAT = "coverage.dat";
-              }
-              ''
-                export HOME="$TMPDIR/home"
-                mkdir -p "$HOME" "$out"
-                cc -std=c11 -O2 -Wall -Wextra -Werror \
-                  ${self}/native/spawn.c -o "$TMPDIR/cl-process-kit-spawn"
-                export CL_PROCESS_KIT_SPAWN="$TMPDIR/cl-process-kit-spawn"
-                timeout 30 sh ${self}/t/native-spawn-test.sh "$CL_PROCESS_KIT_SPAWN"
-                timeout 180 sbcl --script ${self}/run-tests.lisp
-                touch "$out/passed"
-              '';
-          pty-tests =
-            pkgs.runCommand "cl-process-kit-pty-tests"
-              {
-                nativeBuildInputs = [
-                  pkgs.sbcl
-                  pkgs.stdenv.cc
-                  pkgs.coreutils
-                ];
-                CL_SOURCE_REGISTRY = sourceRegistry;
-              }
-              ''
-                export HOME="$TMPDIR/home"
-                mkdir -p "$HOME" "$out"
-                cc -O2 -fPIC -shared ${self}/native/pty.c \
-                  -o "$TMPDIR/libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}" \
-                  ${pkgs.lib.optionalString pkgs.stdenv.isLinux "-lutil"}
-                export CL_PROCESS_KIT_PTY_LIBRARY="$TMPDIR/libcl_process_kit_pty${pkgs.stdenv.hostPlatform.extensions.sharedLibrary}"
-                timeout 60 sbcl --script ${self}/run-pty-tests.lisp
-                touch "$out/passed"
-              '';
+          # run-tests.lisp, not asdf:test-system: it does more than load and
+          # test cl-process-kit/test (coverage instrumentation toggling, the
+          # +minimum-*-coverage+ ratchet, CL_SOURCE_REGISTRY bootstrap for a
+          # bare `sbcl --script` invocation) that only this entry point
+          # performs, matching the org's own PACKAGE_STANDARD.md convention
+          # of a single canonical `run-tests.lisp` per repository.
+          checkout-tests = clForSystem.mkScriptCheck {
+            drv = lisp.clProcessKit;
+            entryPoint = "run-tests.lisp";
+            timeoutSeconds = 180;
+          };
+
+          pty-tests = clForSystem.mkScriptCheck {
+            drv = lisp.clProcessKitPty;
+            entryPoint = "run-pty-tests.lisp";
+            timeoutSeconds = 60;
+          };
 
           # Dead code, TODO/FIXME markers, adapter layers around a
           # nerima-lisp dependency, and backward-compatibility shims have all
@@ -300,7 +418,7 @@
               '';
 
           # No src/ or t/ file has ever needed to exceed this: the largest
-          # today is communicate.lisp at 294 lines. 500 is cl-weave's own
+          # today is communicate.lisp at 295 lines. 500 is cl-weave's own
           # stated org guideline (see its CHANGELOG's "no source file
           # exceeds 500 lines" entry), adopted verbatim rather than
           # inventing a different number -- a file crossing it is exactly
@@ -338,10 +456,22 @@
         }
       );
 
+      # apps/devShells stay on the original hand-rolled CL_SOURCE_REGISTRY
+      # string, NOT a cl-nix-forge primitive: `lispScript`/`lispWithSystems`
+      # are a real fit in principle, but this migration's own research did
+      # not confirm their exact parameter shape (`lispScript`'s
+      # `dependencies` argument in particular) against real usage the way
+      # `lispDerivation`/`mkScriptCheck` were confirmed against cl-json-kit's
+      # and cl-weave's own working flake.nix files above -- guessing an
+      # unverified API here risks a broken `nix run`/`nix develop` for a
+      # part of this migration that carries no correctness benefit over the
+      # proven string this flake already had. Revisit once a sibling repo's
+      # own flake.nix demonstrates the pattern.
       apps = forAllSystems (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
           test = pkgs.writeShellApplication {
             name = "cl-process-kit-test";
             runtimeInputs = [
@@ -353,7 +483,7 @@
             text = ''
               export CL_SOURCE_REGISTRY="${sourceRegistry}"
               native_tmpdir="''${TMPDIR:-/tmp}"
-              cc -std=c11 -O2 -Wall -Wextra -Werror \
+              cc ${spawnCflags} \
                 ${self}/native/spawn.c -o "$native_tmpdir/cl-process-kit-spawn"
               export CL_PROCESS_KIT_SPAWN="$native_tmpdir/cl-process-kit-spawn"
               timeout 30 sh ${self}/t/native-spawn-test.sh "$CL_PROCESS_KIT_SPAWN"
@@ -377,6 +507,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
         in
         {
           default = pkgs.mkShell {

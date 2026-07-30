@@ -33,19 +33,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `flake.nix`'s `.asd` `:version` extraction now uses `cl-nix-forge`'s
-  dedicated `fromAsdSystem` lexer (new flake input, pinned `v0.4.0`) instead
-  of a hand-rolled line-by-line regex. Strictly stronger, not just shorter:
-  `cl-process-kit.asd` declares four systems sharing one version
-  (`cl-process-kit`, `/test`, `/pty`, `/pty-test`), and the old regex read
-  whichever `:version` line happened to come first with no cross-check,
-  while `fromAsdSystem` fails the build loudly if any of them ever
-  disagreed. `cl-nix-forge` is the org's own shared Nix/ASDF-derivation
-  library; adopted only for this one function here, not for a full
-  `mkPackageFlake` migration -- no other nerima-lisp repo has yet migrated
-  a flake with this project's native C compilation and custom check-count
-  complexity, so a full rewrite stays a deliberately deferred, separately
-  evaluated decision.
+- `flake.nix`'s `.asd` `:version` extraction uses `cl-nix-forge`'s dedicated
+  `fromAsdSystem` lexer instead of a hand-rolled line-by-line regex.
+  Strictly stronger, not just shorter: `cl-process-kit.asd` declares four
+  systems sharing one version (`cl-process-kit`, `/test`, `/pty`,
+  `/pty-test`), and the old regex read whichever `:version` line happened
+  to come first with no cross-check, while `fromAsdSystem` fails the build
+  loudly if any of them ever disagreed.
+- `flake.nix`'s `packages.*`/`checks.checkout-tests`/`checks.pty-tests`
+  now build on `cl-nix-forge`'s `lispDerivation`/`mkScriptCheck` primitives
+  (new flake input, pinned `v0.4.0`) instead of `pkgs.sbcl.buildASDFSystem`
+  plus hand-rolled `pkgs.runCommand` test derivations. `noForbiddenMarkers`,
+  `maxFileLength`, `formatting`, and `docs` are untouched -- none of them
+  involve ASDF, so cl-nix-forge has nothing to offer there. Two things
+  cl-process-kit's own code needed that neither of the org's two existing
+  adopters (`cl-weave`, `cl-json-kit`) demonstrated: `src/pty.lisp` reads
+  `CL_PROCESS_KIT_PTY_LIBRARY` explicitly at load time (an `SB-ALIEN
+  LOAD-SHARED-OBJECT` call needs a real path, not a bare SONAME resolved
+  off `nativeLibraries`' `LD_LIBRARY_PATH`/`DYLD_LIBRARY_PATH` propagation
+  alone), so that env var is still set directly alongside `nativeLibraries`;
+  and `native/spawn.c`'s trampoline binary is compiled twice on purpose --
+  once into `$out/bin` for the distributed package (`postInstall`), once
+  into the build sandbox for `checks.checkout-tests` (`preCheck`), since a
+  check needs the binary to exist before its own build/install phases (what
+  actually produces the packaged copy) have run. `apps`/`devShells` stay on
+  the original hand-rolled `CL_SOURCE_REGISTRY` string, not
+  `cl-nix-forge:lispScript` -- this migration's own research did not verify
+  that primitive's exact parameter shape the way `lispDerivation`/
+  `mkScriptCheck` were verified against real builds, and guessing an
+  unconfirmed API for a part of the flake with no correctness benefit over
+  the proven string was not worth the risk.
+  Verified with `nix build` on each new package/check individually before
+  the full `nix flake check` (179/179 + 6/6 PTY, coverage unchanged at
+  87.8%/81.5%, both native artifacts confirmed present and loadable).
 
 ### Changed (BREAKING)
 
