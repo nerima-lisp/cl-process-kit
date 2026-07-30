@@ -68,18 +68,24 @@
 
   (it "attaches the matching stage and full pipeline result to timeout and cancellation conditions"
     (flet ((check-condition (condition expected-kind)
-             (let* ((stage-index (etypecase condition
-                                    (process-timeout-error (process-timeout-error-stage-index condition))
-                                    (process-cancelled-error (process-cancelled-error-stage-index condition))))
-                    (stage-result (etypecase condition
-                                    (process-timeout-error (process-timeout-error-result condition))
-                                    (process-cancelled-error (process-cancelled-error-result condition))))
-                    (pipeline-result (etypecase condition
-                                       (process-timeout-error (process-timeout-error-pipeline-result condition))
-                                       (process-cancelled-error (process-cancelled-error-pipeline-result condition)))))
+             (let* ((stage-index
+                      (etypecase condition
+                        (process-timeout-error (process-timeout-error-stage-index condition))
+                        (process-cancelled-error (process-cancelled-error-stage-index condition))))
+                    (stage-result
+                      (etypecase condition
+                        (process-timeout-error (process-timeout-error-result condition))
+                        (process-cancelled-error (process-cancelled-error-result condition))))
+                    (pipeline-result
+                      (etypecase condition
+                        (process-timeout-error
+                          (process-timeout-error-pipeline-result condition))
+                        (process-cancelled-error
+                          (process-cancelled-error-pipeline-result condition)))))
                (expect (integerp stage-index) :to-be-truthy)
                (expect (= (length (pipeline-result-results pipeline-result)) 2) :to-be-truthy)
-               (expect (eq stage-result (nth stage-index (pipeline-result-results pipeline-result))) :to-be-truthy)
+               (expect (eq stage-result (nth stage-index (pipeline-result-results pipeline-result)))
+                       :to-be-truthy)
                (if (eq expected-kind :timeout)
                    (progn (expect stage-result :to-have-timed-out)
                           (expect pipeline-result :to-have-timed-out))
@@ -88,15 +94,18 @@
                (expect-not stage-result :to-have-succeeded)
                (expect-not pipeline-result :to-have-succeeded))))
       (handler-case
-          (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "cat" nil :search t))
+          (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
+                              (make-command "cat" nil :search t))
                         :timeout 0.1d0 :grace-period 0.1d0 :on-timeout :error)
         (process-timeout-error (condition) (check-condition condition :timeout)))
       (let* ((token (make-cancellation-token))
-             (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
-                                               :name "process-kit pipeline condition cancellation test")))
+             (canceller
+               (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
+                                      :name "process-kit pipeline condition cancellation test")))
         (unwind-protect
              (handler-case
-                 (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")) (make-command "cat" nil :search t))
+                 (run-pipeline (list (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
+                                     (make-command "cat" nil :search t))
                                :cancellation-token token :grace-period 0.1d0 :on-cancel :error)
                (process-cancelled-error (condition) (check-condition condition :cancel)))
           (sb-thread:join-thread canceller))))))

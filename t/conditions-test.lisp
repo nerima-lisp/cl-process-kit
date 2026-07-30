@@ -10,12 +10,14 @@
 (in-package #:cl-process-kit/test)
 
 (defun %sample-process-result (&key (status :exited) (exit-code 0) signal (program "prog"))
-  (make-process-result :program program :arguments nil :status status :exit-code exit-code :signal signal))
+  (make-process-result :program program :arguments nil :status status
+                       :exit-code exit-code :signal signal))
 
 (describe "condition reports"
   (it "process-launch-error reports the program"
     (let ((condition (make-condition 'process-launch-error
-                                      :program "/bin/missing" :arguments nil :directory nil :cause nil)))
+                                      :program "/bin/missing" :arguments nil
+                                      :directory nil :cause nil)))
       (expect (search "/bin/missing" (princ-to-string condition)) :to-be-truthy)))
 
   (it "process-exit-error reports status, exit-code, and signal"
@@ -35,7 +37,8 @@
 
   (it "communicate-options-mismatch reports both option sets"
     (let ((condition (make-condition 'communicate-options-mismatch
-                                      :process nil :expected-options '(:input "a") :actual-options '(:input "b"))))
+                                      :process nil :expected-options '(:input "a")
+                                      :actual-options '(:input "b"))))
       (let ((report (princ-to-string condition)))
         (expect (search "\"a\"" report) :to-be-truthy)
         (expect (search "\"b\"" report) :to-be-truthy))))
@@ -52,7 +55,8 @@
       (expect (process-timeout-error-pipeline-result condition) :to-be nil)))
 
   (it "process-cancelled-error reports the cancelled program"
-    (let ((condition (make-condition 'process-cancelled-error :result (%sample-process-result :program "cancelled-prog"))))
+    (let ((condition (make-condition 'process-cancelled-error
+                                      :result (%sample-process-result :program "cancelled-prog"))))
       (expect (search "cancelled-prog" (princ-to-string condition)) :to-be-truthy)
       (expect (process-cancelled-error-stage-index condition) :to-be nil)
       (expect (process-cancelled-error-pipeline-result condition) :to-be nil)))

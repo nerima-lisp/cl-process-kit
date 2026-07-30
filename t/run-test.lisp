@@ -14,7 +14,8 @@
     ;; already be resolved to an absolute path via the real environment
     ;; before the command is built, rather than via :search t.
     (let* ((env-program (process-kit::%resolve-executable "env" nil (sb-ext:posix-environ) nil))
-           (result (run-command (make-command (namestring env-program) nil :environment-policy nil))))
+           (result (run-command
+                    (make-command (namestring env-program) nil :environment-policy nil))))
       (expect (string= (process-result-stdout result) "") :to-be-truthy)))
 
   (it "run-command applies environment updates and deletions"
@@ -25,16 +26,20 @@
       (expect (string= (process-result-stdout result) "new:") :to-be-truthy)))
 
   (it "run-command merges stderr into stdout"
-    (let ((result (run-command (make-command "/bin/sh" (list "-c" "printf out; printf err >&2") :stderr :stdout))))
+    (let ((result (run-command
+                   (make-command "/bin/sh" (list "-c" "printf out; printf err >&2")
+                                :stderr :stdout))))
       (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
       (expect (string= (process-result-stderr result) "") :to-be-truthy)))
 
   (it "run-command cancels a blocked stdin write"
     (let* ((token (make-cancellation-token))
            (input (make-string (* 1024 1024) :initial-element (code-char 120))))
-      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
+      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
+                             :name "process-kit cancellation test")
       (let ((result (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
-                                 :input input :cancellation-token token :grace-period 0.1d0 :on-cancel :return)))
+                                 :input input :cancellation-token token :grace-period 0.1d0
+                                 :on-cancel :return)))
         (expect result :to-have-been-cancelled)
         (expect (= (process-result-signal result) 9) :to-be-truthy)
         (expect-not result :to-have-succeeded))))
@@ -47,15 +52,18 @@
   (it "run-command/checked signals process-exit-error"
     (handler-case (run-command/checked (make-command "/bin/sh" (list "-c" "exit 6")))
       (process-exit-error (condition)
-        (expect (= (process-result-exit-code (process-exit-error-result condition)) 6) :to-be-truthy))))
+        (expect (= (process-result-exit-code (process-exit-error-result condition)) 6)
+                :to-be-truthy))))
 
   (it "run-command signals process-timeout-error on its default :on-timeout :error"
     (signals process-timeout-error
-      (run-command (make-command "/bin/sh" (list "-c" "sleep 5")) :timeout 0.2d0 :grace-period 0.1d0)))
+      (run-command (make-command "/bin/sh" (list "-c" "sleep 5"))
+                   :timeout 0.2d0 :grace-period 0.1d0)))
 
   (it "run-command signals process-cancelled-error on its default :on-cancel :error"
     (let* ((token (make-cancellation-token)))
-      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
+      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
+                             :name "process-kit cancellation test")
       (signals process-cancelled-error
         (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
                      :cancellation-token token :grace-period 0.1d0)))))
@@ -94,7 +102,8 @@
       (expect (string= (process-result-stdout result) (format nil "visible~%")) :to-be-truthy)))
 
   (it "preserves a searched executable symlink as argv zero"
-    (let* ((directory (merge-pathnames (format nil "cl-process-kit-~A/" (gensym)) (uiop:temporary-directory)))
+    (let* ((directory (merge-pathnames (format nil "cl-process-kit-~A/" (gensym))
+                                       (uiop:temporary-directory)))
            (target (merge-pathnames "target-script" directory))
            (alias (merge-pathnames "applet" directory)))
       (unwind-protect
@@ -105,7 +114,8 @@
              (sb-posix:chmod (namestring target) #o755)
              (sb-posix:symlink (namestring target) (namestring alias))
              (let ((result (run "applet" nil
-                                :environment (list (format nil "PATH=~A" (namestring directory))) :search t)))
+                                :environment (list (format nil "PATH=~A" (namestring directory)))
+                                :search t)))
                (expect (string= (process-result-stdout result) (namestring alias)) :to-be-truthy)))
         (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
 
@@ -132,7 +142,8 @@
                         (list "-c" "printf '%s:%s:%s' \"$ONLY\" \"$PWD\" \"${HOME+inherited}\"")
                         :environment (list "ONLY=yes" "PATH=/usr/bin:/bin")
                         :directory directory))
-           (expected (format nil "yes:~A:" (string-right-trim "/" (namestring (truename directory))))))
+           (expected (format nil "yes:~A:"
+                             (string-right-trim "/" (namestring (truename directory))))))
       (expect (string= (process-result-stdout result) expected) :to-be-truthy)))
 
   (it "run can merge stderr into stdout"
@@ -177,16 +188,16 @@
 
   (it "run/checked signals process-cancelled-error on its default :on-cancel :error"
     (let* ((token (make-cancellation-token)))
-      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test")
+      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
+                             :name "process-kit cancellation test")
       (signals process-cancelled-error
         (run/checked "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
                      :cancellation-token token :grace-period 0.1d0)))))
 
 (describe "run output capture and encoding"
   (it "run caps both output streams without pipe deadlock"
-    (let ((result (run "/bin/sh"
-                       (list "-c" "i=0; while [ $i -lt 1000 ]; do printf x; printf y >&2; i=$((i+1)); done")
-                       :max-output-characters 32)))
+    (let* ((script "i=0; while [ $i -lt 1000 ]; do printf x; printf y >&2; i=$((i+1)); done")
+           (result (run "/bin/sh" (list "-c" script) :max-output-characters 32)))
       (expect (= (length (process-result-stdout result)) 32) :to-be-truthy)
       (expect (= (length (process-result-stderr result)) 32) :to-be-truthy)
       (expect (process-result-stdout-truncated-p result) :to-be-truthy)
@@ -195,27 +206,31 @@
   (it "run captures arbitrary bytes as octets"
     (let ((result (run "/bin/sh" (list "-c" "printf '\\000\\200\\377'") :result-type :octets)))
       (expect (equalp (process-result-stdout result)
-                      (make-array 3 :element-type '(unsigned-byte 8) :initial-contents '(0 128 255)))
+                      (make-array 3 :element-type '(unsigned-byte 8)
+                                    :initial-contents '(0 128 255)))
               :to-be-truthy)))
 
   (it "writes octet input without character-stream re-encoding"
-    (let* ((input (make-array 4 :element-type '(unsigned-byte 8) :initial-contents '(0 127 128 255)))
+    (let* ((input (make-array 4 :element-type '(unsigned-byte 8)
+                                 :initial-contents '(0 127 128 255)))
            (result (run "cat" nil :input input :result-type :octets :search t)))
       (expect (equalp (process-result-stdout result) input) :to-be-truthy)))
 
   (it "run decodes UTF-8 after a multibyte sequence crosses a read boundary"
-    (let* ((prefix (make-string 4095 :initial-element (code-char 97)))
+    (let* ((script "i=0; while [ $i -lt 4095 ]; do printf a; i=$((i+1)); done; printf '\\303\\251'")
+           (prefix (make-string 4095 :initial-element (code-char 97)))
            (expected (concatenate 'string prefix (string (code-char #xE9))))
-           (result (run "/bin/sh"
-                        (list "-c" "i=0; while [ $i -lt 4095 ]; do printf a; i=$((i+1)); done; printf '\\303\\251'")
-                        :external-format :utf-8)))
+           (result (run "/bin/sh" (list "-c" script) :external-format :utf-8)))
       (expect (string= (process-result-stdout result) expected) :to-be-truthy)))
 
   (it "limits UTF-8 output by complete characters"
-    (dolist (entry '(("\\303\\251x" . #xE9) ("\\342\\230\\203x" . #x2603) ("\\360\\237\\230\\200x" . #x1F600)))
+    (dolist (entry '(("\\303\\251x" . #xE9)
+                     ("\\342\\230\\203x" . #x2603)
+                     ("\\360\\237\\230\\200x" . #x1F600)))
       (let ((result (run "/bin/sh" (list "-c" (format nil "printf '~A'" (car entry)))
                          :external-format :utf-8 :max-output-characters 1)))
-        (expect (string= (process-result-stdout result) (string (code-char (cdr entry)))) :to-be-truthy)
+        (expect (string= (process-result-stdout result) (string (code-char (cdr entry))))
+                :to-be-truthy)
         (expect (process-result-stdout-truncated-p result) :to-be-truthy))))
 
   (it "run encodes string input at the API boundary"

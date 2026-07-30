@@ -47,7 +47,7 @@
     (with-process (process (%spawn-sleeping))
       (expect (process-wait process :timeout 0.05d0) :to-be-null)))
 
-  (it "process-signal is NIL for a normally exited child and process-exit-code is NIL for a signaled one"
+  (it "process-signal is NIL for a normally exited child, process-exit-code NIL for a signaled one"
     ;; Two independent scenarios, four independent checks -- WITH-SOFT-
     ;; ASSERTIONS runs every one and reports all failures together, so a
     ;; regression in (say) just the SIGKILL scenario isn't hidden behind an
@@ -117,17 +117,21 @@
         (signals communicate-options-mismatch (communicate process :timeout 1)))))
 
   (it "treats a fresh but content-equal octet-vector input as the same options"
-    (with-process (process (spawn "cat" nil :input :stream :output :stream :error :stream :search t :environment (sb-ext:posix-environ)))
+    (with-process (process (spawn "cat" nil :input :stream :output :stream :error :stream :search t
+                                  :environment (sb-ext:posix-environ)))
       (let* ((bytes (sb-ext:string-to-octets "abc" :external-format :utf-8))
              (first (communicate process :input bytes :result-type :octets)))
         (expect (eq (communicate process :input (copy-seq bytes) :result-type :octets) first)
                 :to-be-truthy))))
 
   (it "rejects a same-length octet-vector input that differs in content"
-    (with-process (process (spawn "cat" nil :input :stream :output :stream :error :stream :search t :environment (sb-ext:posix-environ)))
-      (communicate process :input (sb-ext:string-to-octets "abc" :external-format :utf-8) :result-type :octets)
+    (with-process (process (spawn "cat" nil :input :stream :output :stream :error :stream :search t
+                                  :environment (sb-ext:posix-environ)))
+      (communicate process :input (sb-ext:string-to-octets "abc" :external-format :utf-8)
+                           :result-type :octets)
       (signals communicate-options-mismatch
-        (communicate process :input (sb-ext:string-to-octets "xyz" :external-format :utf-8) :result-type :octets)))))
+        (communicate process :input (sb-ext:string-to-octets "xyz" :external-format :utf-8)
+                             :result-type :octets)))))
 
 ;;; --- communication reservation state machine ------------------------------
 ;;;
@@ -139,19 +143,24 @@
 
 (describe "communication reservation state machine"
   (it "rejects begin-communication while communication is already in progress"
-    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok") :input :stream :output :stream :error :stream))
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok")
+                                  :input :stream :output :stream :error :stream))
       (process-kit::%begin-communication process)
       (signals error (process-kit::%begin-communication process))))
 
   (it "rejects reserve-communication while communication is already in progress"
-    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok") :input :stream :output :stream :error :stream))
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok")
+                                  :input :stream :output :stream :error :stream))
       (process-kit::%begin-communication process)
       (signals error
-        (process-kit::%reserve-communication process (process-kit::%make-communication-contract) 'another-owner))))
+        (process-kit::%reserve-communication
+         process (process-kit::%make-communication-contract) 'another-owner))))
 
   (it "rejects begin-communication while another owner holds the reservation"
-    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok") :input :stream :output :stream :error :stream))
-      (process-kit::%reserve-communication process (process-kit::%make-communication-contract) 'test-owner)
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf ok")
+                                  :input :stream :output :stream :error :stream))
+      (process-kit::%reserve-communication
+       process (process-kit::%make-communication-contract) 'test-owner)
       (signals error (process-kit::%begin-communication process)))))
 
 (describe "copier error propagation"
@@ -162,7 +171,7 @@
       (signals process-io-error
         (run "/bin/sh" (list "-c" "printf payload")))))
 
-  (it "signals a cleanup process-io-error when a copier will not join even after its stream is closed"
+  (it "signals a cleanup process-io-error when a copier will not join after its stream closes"
     ;; Force every join to time out: draining must give up and report a
     ;; :cleanup process-io-error rather than hang.
     (with-mocked-functions

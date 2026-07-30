@@ -28,7 +28,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
 (describe "run timeout and signal escalation"
   (it "run with on-timeout :return sets timed-out-p on a real timeout"
-    (let ((result (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :return)))
+    (let ((result (run "/bin/sh" (list "-c" "sleep 5")
+                       :timeout 0.2 :grace-period 0.1 :on-timeout :return)))
       (expect result :to-have-timed-out)
       (expect-not result :to-have-succeeded)))
 
@@ -54,7 +55,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
                        :timeout 1 :grace-period 1 :on-timeout :return
                        :clock (%make-jump-clock)
                        :sleeper (%counting-sleeper sleep-calls)))
-           (elapsed-seconds (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+           (elapsed-seconds (/ (- (get-internal-real-time) started)
+                               internal-time-units-per-second)))
       (expect result :to-have-timed-out)
       ;; The fake clock reports the deadline as already passed on the very
       ;; first check, so the sleeper is never invoked and no real waiting for
@@ -64,7 +66,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
   (it "run times out a stopped child instead of waiting forever"
     (let* ((started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "kill -STOP $$") :timeout 0.1 :grace-period 0.1 :on-timeout :return))
+           (result (run "/bin/sh" (list "-c" "kill -STOP $$")
+                       :timeout 0.1 :grace-period 0.1 :on-timeout :return))
            (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
       (expect result :to-have-timed-out)
       (expect (< elapsed 2) :to-be-truthy)))
@@ -74,7 +77,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (signals error
         (run "/bin/sh" (list "-c" "sleep 5") :timeout 1
              :clock (cl-boundary-kit:make-clock :monotonic-fn (lambda () (error "clock failed")))))
-      (expect (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 2) :to-be-truthy)))
+      (expect (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 2)
+              :to-be-truthy)))
 
   (it "run rejects invalid timeout controls before spawning"
     (signals error (run (%true-program) nil :on-timeout :invalid))
@@ -142,7 +146,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
 (describe "cancellation"
   (it "does not cancel an already cached process result"
-    (with-process (process (spawn "/bin/sh" (list "-c" "printf stable") :input :stream :output :stream :error :stream))
+    (with-process (process (spawn "/bin/sh" (list "-c" "printf stable")
+                                  :input :stream :output :stream :error :stream))
       (let* ((first (communicate process))
              (token (make-cancellation-token)))
         (cancel token)
@@ -153,7 +158,8 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
 
   (it "cancels a pipe-holding descendant after its leader exits"
     (let* ((token (make-cancellation-token))
-           (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token)) :name "process-kit cancellation test"))
+           (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
+                                             :name "process-kit cancellation test"))
            (started (get-internal-real-time))
            (result (run "/bin/sh" (list "-c" "(trap \"\" TERM; sleep 5) & printf leader")
                         :cancellation-token token :grace-period 0.1d0 :on-cancel :return))

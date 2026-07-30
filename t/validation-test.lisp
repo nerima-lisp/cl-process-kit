@@ -36,14 +36,16 @@
        ("an :environment-policy entry containing a NUL byte" "/bin/true" nil
         (:environment-policy (#.(format nil "A=~C" (code-char 0)))))
        ("a non-string :environment-update value" "/bin/true" nil (:environment-update (("A" . 1))))
-       ("an :environment-update key containing =" "/bin/true" nil (:environment-update (("A=B" . "1"))))
+       ("an :environment-update key containing =" "/bin/true" nil
+        (:environment-update (("A=B" . "1"))))
        ("an empty :environment-update key" "/bin/true" nil (:environment-update (("" . "1"))))
        ("a duplicate :environment-update key" "/bin/true" nil
         (:environment-update (("A" . "1") ("A" . "2"))))
        ("a dotted (improper) :environment-update list" "/bin/true" nil
         (:environment-update (("A" . "1") . "not-a-list")))
        ("an unknown :stdin policy" "/bin/true" nil (:stdin :bogus))
-       ("a :stdin policy of :stdout, which is only valid for :stderr" "/bin/true" nil (:stdin :stdout))
+       ("a :stdin policy of :stdout, which is only valid for :stderr" "/bin/true" nil
+        (:stdin :stdout))
        ("an unknown :stdout policy" "/bin/true" nil (:stdout :nope))
        ("an unknown :result-type" "/bin/true" nil (:result-type :bogus))
        ("an unknown :decoding-error-policy" "/bin/true" nil (:decoding-error-policy :bogus)))
@@ -102,5 +104,6 @@ applicable protocol method' arm of %PROTOCOL-OBJECT-P."))
       "rejects ~A"
       (label spawn-native-options)
     (declare (ignore label))
-    (expect (raises-error-p (lambda () (apply #'process-kit::spawn-native "/bin/true" nil spawn-native-options)))
+    (expect (raises-error-p
+             (lambda () (apply #'process-kit::spawn-native "/bin/true" nil spawn-native-options)))
             :to-be-truthy)))

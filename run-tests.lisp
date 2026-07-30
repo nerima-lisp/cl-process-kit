@@ -64,7 +64,13 @@
 ;; this to 87.8% (4172/4754) -- fewer total points to begin with, same "less
 ;; duplicated code, less to cover" effect as prior dedups. Set to 87.7, not
 ;; 87.8, for the usual raw-vs-display headroom.
-(defparameter +minimum-expression-coverage+ 87.7
+;;
+;; 87.7 -> 87.9: a new CL-WEAVE:IT-FUZZ property (t/property-test.lisp)
+;; exercises RUN's :REPLACE UTF-8 decoding path across 100 arbitrary-byte
+;; trials instead of the 3 hand-picked sequences t/edge-coverage-test.lisp
+;; already had, raising this to 88.0% (4182/4754). Set to 87.9 for the usual
+;; raw (87.968%) vs. display headroom.
+(defparameter +minimum-expression-coverage+ 87.9
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
 
 ;; 81.5 -> 81.4: unifying %WAIT-UNTIL-TERMINAL/%WAIT-UNTIL-GROUP-GONE/
@@ -96,7 +102,12 @@
 ;; duplicate copies' branch arms was better-exercised than the other and the
 ;; merge inherited the more-covered version. Set to 81.4 for the usual raw
 ;; (541/664 = 81.4759%) vs. display headroom.
-(defparameter +minimum-branch-coverage+ 81.4
+;;
+;; 81.4 -> 82.1: the same new IT-FUZZ property above also drives more of
+;; %UTF8-COMPLETE-PREFIX-END's branch arms across its 100 random trials,
+;; raising this to 82.2% (546/664). Set to 82.1 for the usual raw
+;; (82.2289%) vs. display headroom.
+(defparameter +minimum-branch-coverage+ 82.1
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()

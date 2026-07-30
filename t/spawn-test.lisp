@@ -44,7 +44,8 @@
   (it "spawn captures stdout via :output :stream for manual reading"
     (let ((process (spawn "/bin/sh" (list "-c" "printf hello") :output :stream)))
       (process-wait process)
-      (expect (string= (read-line (process-kit::%process-output process) nil "") "hello") :to-be-truthy)))
+      (expect (string= (read-line (process-kit::%process-output process) nil "") "hello")
+              :to-be-truthy)))
 
   (it "spawn verifies a private process group before returning"
     (let ((process (spawn "/bin/sh" (list "-c" "sleep 5"))))
@@ -70,11 +71,13 @@
         (expect (eq result (communicate process)) :to-be-truthy))))
 
   #+linux
-  (cl-weave:it-skip "rejects a concurrent communicate while capture is in progress"
-                    "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
+  (cl-weave:it-skip
+   "rejects a concurrent communicate while capture is in progress"
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
   #-linux
   (it "rejects a concurrent communicate while capture is in progress"
-    (let* ((process (spawn "/bin/sh" (list "-c" "sleep 0.2; printf finished") :output :stream :error :stream))
+    (let* ((process (spawn "/bin/sh" (list "-c" "sleep 0.2; printf finished")
+                           :output :stream :error :stream))
            (thread-result nil)
            (thread-error nil)
            (thread (sb-thread:make-thread
@@ -97,8 +100,10 @@
           (sb-thread:join-thread thread)))))
 
   (it "preserves cached communicate identity and rejects changed contracts"
-    (let ((process (process-kit::%make-process-handle :raw-process nil :pid 1 :pgid 1 :program "test"))
-          (result (make-process-result :program "test" :arguments nil :status :exited :exit-code 0)))
+    (let ((process (process-kit::%make-process-handle
+                    :raw-process nil :pid 1 :pgid 1 :program "test"))
+          (result (make-process-result
+                   :program "test" :arguments nil :status :exited :exit-code 0)))
       (expect (process-kit::%begin-communication
                process :input (copy-seq "abc") :timeout 1 :grace-period 0.25
                        :timeout-signal 15 :kill-signal 9 :on-timeout :return
@@ -125,8 +130,10 @@
             (error "Expected COMMUNICATE-OPTIONS-MISMATCH."))
         (communicate-options-mismatch (condition)
           (expect (communicate-options-mismatch-process condition) :to-be process)
-          (expect (getf (communicate-options-mismatch-expected-options condition) :input) :to-equal "abc")
-          (expect (getf (communicate-options-mismatch-actual-options condition) :input) :to-equal "changed"))))))
+          (expect (getf (communicate-options-mismatch-expected-options condition) :input)
+                  :to-equal "abc")
+          (expect (getf (communicate-options-mismatch-actual-options condition) :input)
+                  :to-equal "changed"))))))
 
 (describe "structured logging"
   (it "*process-logger* observes a successful spawn and a launch failure"
@@ -148,8 +155,9 @@
 
 (describe "process-group termination"
   #+linux
-  (cl-weave:it-skip "kills descendants after the process-group leader exits on TERM"
-                    "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
+  (cl-weave:it-skip
+   "kills descendants after the process-group leader exits on TERM"
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
   #-linux
   (it "kills descendants after the process-group leader exits on TERM"
     (let ((process (spawn "/bin/sh"
@@ -160,7 +168,8 @@
         (expect (process-kit::%process-group-alive-p process) :to-be nil))))
 
   (it "close-process kills descendants after their leader exits"
-    (let ((process (spawn "/bin/sh" (list "-c" "trap \"exit 0\" TERM; (trap \"\" TERM; sleep 5) & wait"))))
+    (let ((process (spawn "/bin/sh"
+                          (list "-c" "trap \"exit 0\" TERM; (trap \"\" TERM; sleep 5) & wait"))))
       (sleep 0.05)
       (close-process process :timeout 0.1)
       (expect (process-kit::%process-group-alive-p process) :to-be nil)))
@@ -170,8 +179,9 @@
       (signals process-timeout-error (communicate process :timeout 0.1d0 :grace-period 0.1d0))))
 
   #+linux
-  (cl-weave:it-skip "does not publicly signal a group after its leader is terminal"
-                    "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
+  (cl-weave:it-skip
+   "does not publicly signal a group after its leader is terminal"
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
   #-linux
   (it "does not publicly signal a group after its leader is terminal"
     (let ((process (spawn "/bin/sh" (list "-c" "(trap '' TERM; sleep 5) & exit 0"))))
@@ -184,8 +194,9 @@
         (close-process process :timeout 0.1))))
 
   #+linux
-  (cl-weave:it-skip "provides distinct leader and group signal operations"
-                    "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
+  (cl-weave:it-skip
+   "provides distinct leader and group signal operations"
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
   #-linux
   (it "provides distinct leader and group signal operations"
     (let ((leader-only (spawn "/bin/sh" (list "-c" "(trap '' TERM; sleep 5) & wait"))))
@@ -204,8 +215,9 @@
       (expect (process-alive-p whole-group) :to-be nil)))
 
   #+linux
-  (cl-weave:it-skip "close-process cleans descendants more than five seconds after their leader exits"
-                    "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
+  (cl-weave:it-skip
+   "close-process cleans descendants more than five seconds after their leader exits"
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see CHANGELOG)")
   #-linux
   (it "close-process cleans descendants more than five seconds after their leader exits"
     (let ((process (spawn "/bin/sh" (list "-c" "(trap \"\" TERM; sleep 30) & exit 0"))))
@@ -225,11 +237,15 @@
     (signals process-launch-error (spawn (%true-program) nil :environment (list "MALFORMED")))
     (signals process-launch-error (spawn (%true-program) nil :environment (list "=value")))
     (signals process-launch-error (spawn (%true-program) nil :environment (list "A=1" "A=2")))
-    (signals process-launch-error (spawn (%true-program) nil :environment (list (format nil "A=bad~Cvalue" #\Null)))))
+    (signals process-launch-error
+      (spawn (%true-program) nil :environment (list (format nil "A=bad~Cvalue" #\Null)))))
 
   (it "rejects unsafe command environment updates"
-    (signals error (make-command "/bin/true" nil :environment-update (list (cons "A=B" "value"))))
-    (signals error (make-command "/bin/true" nil :environment-update (list (cons "A" "1") (cons "A" "2"))))))
+    (signals error
+      (make-command "/bin/true" nil :environment-update (list (cons "A=B" "value"))))
+    (signals error
+      (make-command "/bin/true" nil
+                    :environment-update (list (cons "A" "1") (cons "A" "2"))))))
 
 (describe "spawn :fd-limit"
   (it "rejects a non-positive or non-integer fd-limit"
@@ -240,7 +256,8 @@
   (it "lowers the child's inherited RLIMIT_NOFILE without changing this process's own limit"
     (multiple-value-bind (before-soft before-hard) (process-kit::%get-nofile-limit)
       (let ((result (run "sh" (list "-c" "ulimit -n") :search t :fd-limit 1024)))
-        (expect (string= (string-trim '(#\Newline) (process-result-stdout result)) "1024") :to-be-truthy))
+        (expect (string= (string-trim '(#\Newline) (process-result-stdout result)) "1024")
+                :to-be-truthy))
       (multiple-value-bind (after-soft after-hard) (process-kit::%get-nofile-limit)
         (expect (= before-soft after-soft) :to-be-truthy)
         (expect (= before-hard after-hard) :to-be-truthy))))
@@ -261,13 +278,15 @@
                         (list '("PATH=bin") #P"/")))
       (destructuring-bind (environment directory) case
         (let* ((process (spawn "sh" (list "-c" "printf found")
-                               :search t :environment environment :directory directory :output :stream))
+                               :search t :environment environment :directory directory
+                               :output :stream))
                (result (communicate process)))
           (expect (string= (process-result-stdout result) "found") :to-be-truthy)))))
 
   (it "rejects missing and non-executable searched programs"
     (signals process-launch-error
-      (spawn "definitely-not-a-cl-process-kit-program" nil :search t :environment (list "PATH=/bin")))
+      (spawn "definitely-not-a-cl-process-kit-program" nil
+             :search t :environment (list "PATH=/bin")))
     (signals process-launch-error
       (spawn "hosts" nil :search t :environment (list "PATH=/etc"))))
 

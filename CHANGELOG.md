@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cl-weave:it-fuzz` property (`t/property-test.lisp`): `run`'s `:replace`
+  UTF-8 decoding path must never signal on arbitrary octet input, across
+  100 generated trials, generalizing the 3 hand-picked malformed sequences
+  `t/edge-coverage-test.lisp` already covered into a genuine property of
+  the full byte space. First `it-fuzz` use in this codebase; `it-property`,
+  `it-each`, and `run-mutations` were already adopted in earlier passes.
+- `checks.maxLineLength` in `flake.nix`: fails `nix flake check` if any
+  `src/`/`t/` line exceeds 100 columns (the org's `CODING_STANDARD.md`
+  rule), matching the existing `checks.maxFileLength` gate's shape. Added
+  after actually closing the gap it enforces, not before: an earlier
+  pass's "wrap every line at 100 columns" commit was scoped to `src/`
+  only (its own message says so), and `t/` was never swept -- 100 lines
+  across 12 test files exceeded 100 columns until this pass fixed them by
+  hand, preserving each file's existing hand-crafted formatting rather
+  than running a canonical auto-formatter (`paredit edit format`'s
+  canonical style turned out to differ enough from this codebase's actual
+  conventions -- breaking every keyword-argument pair onto its own line,
+  removing blank lines between `it` cases -- that using it wholesale
+  would have been a large, unrelated stylistic churn; used only on the two
+  files, `t/pty-test.lisp` and `t/native-spawn-test.lisp`, that had no
+  existing hand-crafted style to preserve in the first place, both single
+  giant crammed one-liners).
+
 ### Changed
 
 - Extracted `%task-submit-output`'s and `%task-finish`'s identical "flush

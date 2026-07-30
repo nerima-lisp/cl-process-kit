@@ -441,6 +441,29 @@
             touch "$out"
           '';
 
+          # 100 columns is the org's CODING_STANDARD.md line-length rule, and
+          # src/ has held to it since an earlier pass wrapped every line
+          # there -- but that pass's own commit message says "src", and t/
+          # was never actually swept: 100 lines across 12 files exceeded it
+          # until this pass fixed them by hand. Gated now so that gap cannot
+          # reopen silently the way it did the first time.
+          maxLineLength = pkgs.runCommand "cl-process-kit-max-line-length" { } ''
+            cd ${self}
+            over=0
+            for f in $(find src t -name '*.lisp'); do
+              long=$(awk 'length > 100 { print FNR": "length }' "$f")
+              if [ -n "$long" ]; then
+                echo "$f has lines over 100 columns:" >&2
+                echo "$long" >&2
+                over=1
+              fi
+            done
+            if [ "$over" -ne 0 ]; then
+              exit 1
+            fi
+            touch "$out"
+          '';
+
           # Fails `nix flake check` when any tracked Nix file is unformatted,
           # turning the formatter into an enforced CI gate rather than a habit.
           formatting = treefmtEval.${system}.config.build.check self;

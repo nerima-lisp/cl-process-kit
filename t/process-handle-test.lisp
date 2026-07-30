@@ -28,9 +28,11 @@
     (signals process-launch-error
       (run-command (make-command "sh" (list "-c" "printf hidden") :environment-policy nil)))
     (signals process-launch-error
-      (run-command (make-command "sh" (list "-c" "printf hidden") :environment-policy nil :search t)))
+      (run-command (make-command "sh" (list "-c" "printf hidden")
+                                 :environment-policy nil :search t)))
     (let ((result (run-command (make-command "sh" (list "-c" "printf visible")
-                                             :environment-policy (list "PATH=/bin:/usr/bin") :search t))))
+                                             :environment-policy (list "PATH=/bin:/usr/bin")
+                                             :search t))))
       (expect (string= (process-result-stdout result) "visible") :to-be-truthy)))
 
   (it "command stdio distinguishes null and inherited streams"
