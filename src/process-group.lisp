@@ -101,21 +101,22 @@ re-signals the original condition."
       (when (>= (get-internal-real-time) deadline) (return nil))
       (sleep +default-poll-interval+))))
 
-(defun close-process (process &key (terminate t) (timeout 1d0))
+(defun close-process (process &key (terminate t) (timeout +default-close-timeout-seconds+))
   (check-type process process-handle)
   (when (and terminate (%process-group-alive-p process))
-    (%signal-process-group process 15 :allow-terminal-leader t)
+    (%signal-process-group process +default-timeout-signal+ :allow-terminal-leader t)
     (unless (%wait-until-process-group-gone process timeout)
-      (%signal-process-group-after-leader-exit process 9)))
+      (%signal-process-group-after-leader-exit process +default-kill-signal+)))
   (unless (process-handle-reaped-p process)
     (process-wait process :timeout timeout))
   (when (and terminate (%process-group-alive-p process))
-    (%signal-process-group-after-leader-exit process 9)
+    (%signal-process-group-after-leader-exit process +default-kill-signal+)
     (%wait-until-process-group-gone process timeout))
   (close-process-streams process)
   process)
 
-(defun call-with-process (process continuation &key (terminate t) (timeout 1.0d0))
+(defun call-with-process (process continuation
+                           &key (terminate t) (timeout +default-close-timeout-seconds+))
   "Call CONTINUATION with PROCESS, then terminate/reap it and close its
 streams via CLOSE-PROCESS on the way out -- success or error. The
 continuation-passing core of WITH-PROCESS: the cleanup contract lives here
@@ -123,7 +124,9 @@ once, as a plain function, and the macro below only supplies the syntax."
   (unwind-protect (funcall continuation process)
     (when process (ignore-errors (close-process process :terminate terminate :timeout timeout)))))
 
-(defmacro with-process ((variable form &key (terminate t) (timeout 1.0d0)) &body body)
+(defmacro with-process ((variable form &key (terminate t)
+                                            (timeout +default-close-timeout-seconds+))
+                         &body body)
   "Bind VARIABLE to FORM (a PROCESS-HANDLE) for BODY, then terminate/reap
 and close its streams via CLOSE-PROCESS on the way out, success or error.
 Thin syntax over CALL-WITH-PROCESS."

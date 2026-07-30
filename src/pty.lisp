@@ -23,6 +23,17 @@ same reason as +POLL-INTERVAL+.")
   "SIGKILL, sent by %TERMINATE-AND-WAIT if +TIMEOUT-SIGNAL+ alone did not
 end the session in time. Kept local for the same reason as +POLL-INTERVAL+.")
 
+(defconstant +max-terminal-dimension+ 65535
+  "Maximum valid ROWS/COLS value: an UNSIGNED SHORT's range, the field
+width of POSIX's struct winsize. SPAWN-PTY and PTY-RESIZE both validate
+against this via the TERMINAL-DIMENSION type below.")
+
+(deftype terminal-dimension () `(integer 1 ,+max-terminal-dimension+))
+
+(defparameter +default-pty-read-size+ 4096
+  "Default :SIZE for PTY-READ-OCTETS/PTY-READ-STRING: how many octets one
+call reads from the PTY master at most.")
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (member :sbcl *features*) (error "cl-process-kit/pty requires SBCL.")))
 
@@ -136,8 +147,8 @@ pipe, a test harness, CI)."
   (multiple-value-bind (default-rows default-cols) (%default-terminal-size)
     (setf rows (if rows-p rows default-rows)
           cols (if cols-p cols default-cols)))
-  (check-type rows (integer 1 65535))
-  (check-type cols (integer 1 65535))
+  (check-type rows terminal-dimension)
+  (check-type cols terminal-dimension)
   (multiple-value-bind (path arguments environment directory) (%command-values command)
     (multiple-value-bind (argument-block argument-size argument-count)
         (%string-block (cons path arguments))
@@ -153,7 +164,7 @@ pipe, a test harness, CI)."
                                :started-at (get-internal-real-time)
                                :external-format (command-external-format command))))))))
 
-(defun pty-read-octets (process &key (size 4096))
+(defun pty-read-octets (process &key (size +default-pty-read-size+))
   (check-type process pty-process)
   (check-type size (integer 1))
   (let ((buffer (make-array size :element-type '(unsigned-byte 8))))
@@ -174,7 +185,7 @@ pipe, a test harness, CI)."
              (incf offset count)))
   (length octets))
 
-(defun pty-read-string (process &key (size 4096))
+(defun pty-read-string (process &key (size +default-pty-read-size+))
   (sb-ext:octets-to-string (pty-read-octets process :size size)
                            :external-format (pty-process-external-format process)))
 
@@ -184,8 +195,8 @@ pipe, a test harness, CI)."
    (sb-ext:string-to-octets string :external-format (pty-process-external-format process))))
 
 (defun pty-resize (process rows cols)
-  (check-type rows (integer 1 65535))
-  (check-type cols (integer 1 65535))
+  (check-type rows terminal-dimension)
+  (check-type cols terminal-dimension)
   (%native-resize/checked (pty-process-fd process) rows cols)
   process)
 

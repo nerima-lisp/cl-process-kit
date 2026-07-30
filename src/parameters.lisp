@@ -30,6 +30,13 @@ clean stop for a descriptor closed under a live reader.")
 (defparameter +default-output-limit+ 1048576
   "Default MAX-OUTPUT-CHARACTERS: 1 MiB of captured output per stream.")
 
+(defparameter +default-close-timeout-seconds+ 1.0d0
+  "Default TIMEOUT for CLOSE-PROCESS, CALL-WITH-PROCESS, and WITH-PROCESS:
+how long to wait for a process's group to exit during resource cleanup
+before giving up on a clean close. A distinct tunable from
++DEFAULT-GRACE-PERIOD-SECONDS+ (which bounds RUN/COMMUNICATE's own
+timeout escalation) even though both happen to default to one second.")
+
 (defparameter +default-grace-period-seconds+ 1.0d0
   "Default GRACE-PERIOD: how long a process's group has to exit under
 +DEFAULT-TIMEOUT-SIGNAL+ before +DEFAULT-KILL-SIGNAL+ follows. RUN,

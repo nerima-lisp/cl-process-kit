@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `+default-close-timeout-seconds+` (1.0d0), replacing bare `1d0`/`1.0d0`
+  literals repeated across `close-process`, `call-with-process`, and
+  `with-process`'s `:timeout` defaults -- a distinct tunable from
+  `+default-grace-period-seconds+` (a different subsystem, RUN/COMMUNICATE
+  vs. resource cleanup) that happened to share the same value. Also named
+  three more bare SIGTERM/SIGKILL literals inside `close-process`'s own
+  body.
+- `src/pty.lisp`'s `+max-terminal-dimension+`/`terminal-dimension` type and
+  `+default-pty-read-size+`, replacing four repeated `(integer 1 65535)`
+  type checks (`spawn-pty`/`pty-resize`'s rows/cols validation) and two
+  `4096` `:size` defaults (`pty-read-octets`/`pty-read-string`).
 - Named two more bare SIGTERM(`15`)/SIGKILL(`9`) literals:
   `process-terminate`/`process-kill`'s (`src/process-group.lisp`)
   `&optional` defaults now reference `+default-timeout-signal+`/
