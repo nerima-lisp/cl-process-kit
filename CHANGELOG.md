@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Bumped four SHA-pinned GitHub Actions that had real, unclaimed releases
+  sitting upstream: `softprops/action-gh-release` v2.6.2 -> v3.0.2 (Node 24
+  runtime only; no input/output change), `actions/configure-pages` v5 ->
+  v6.0.0 (Node 24 runtime only), `actions/upload-pages-artifact` v3 -> v5.0.0
+  (its one behavior change, excluding dotfiles from the uploaded artifact,
+  doesn't affect this project's `mkdocs build` output -- confirmed by
+  listing the actual built site directory, which contains none), and
+  `actions/deploy-pages` v4 -> v5.0.0 (Node 24 runtime only). `actions/
+  checkout`, `DeterminateSystems/nix-installer-action`, `cachix/
+  cachix-action`, and `DeterminateSystems/update-flake-lock` were already on
+  their latest tags.
 - Deduplicated `t/mutation-test.lisp`'s `process-success-p`/
   `pipeline-success-p` case batteries: each was written out as an identical
   literal twice (once for the direct "battery matches the live function"
