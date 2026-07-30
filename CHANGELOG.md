@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Raised the `run-tests.lisp` coverage ratchet's expression floor,
+  87.4% -> 87.5%: this session's magic-number/type-duplication dedups
+  raised actual expression coverage to 87.6% (4167/4759), confirmed by a
+  fresh `nix flake check` run. Branch floor unchanged (81.3%, already
+  below the current 81.4% raw figure with adequate headroom).
+
 ### Added
 
 - `+default-close-timeout-seconds+` (1.0d0), replacing bare `1d0`/`1.0d0`

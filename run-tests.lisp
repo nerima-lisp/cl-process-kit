@@ -38,7 +38,14 @@
 
 (require :asdf)
 
-(defparameter +minimum-expression-coverage+ 87.4
+;; 87.4 -> 87.5: the magic-number/type-duplication dedups two commits ago
+;; (+default-close-timeout-seconds+, terminal-dimension, etc.) removed
+;; enough duplicated code to raise this to 87.6% (4167/4759), confirmed by
+;; a fresh `nix flake check` run rather than trusting an earlier commit's
+;; recorded number. Set to 87.5, not 87.6, to leave real headroom below
+;; the RAW figure -- not just its rounded display -- per the lesson from
+;; this file's own earlier branch-floor display-vs-raw mismatch.
+(defparameter +minimum-expression-coverage+ 87.5
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
 
 ;; 81.5 -> 81.4: unifying %WAIT-UNTIL-TERMINAL/%WAIT-UNTIL-GROUP-GONE/
