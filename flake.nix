@@ -52,6 +52,16 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # The org's shared Nix/ASDF library (cl-nix-forge.lib.<system>). Used here
+    # only for its `.asd` :version lexer (`fromAsdSystem`), not for
+    # `mkPackageFlake` -- this repo's native C compilation (native/spawn.c,
+    # native/pty.c) and multiple custom check derivations have no adopted
+    # precedent elsewhere in the org yet to migrate the whole flake against.
+    cl-nix-forge = {
+      url = "github:nerima-lisp/cl-nix-forge/v0.4.0";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -63,6 +73,7 @@
       cl-log-kit,
       cl-tty-kit,
       treefmt-nix,
+      cl-nix-forge,
       ...
     }:
     let
@@ -73,26 +84,22 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
       sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
 
-      # Reads the first `:version` form out of an ASDF system definition.
-      # Nix regexes are whole-string anchored and `.` never spans newlines, so
-      # the file is split into lines and matched line-by-line rather than with
-      # one multi-line match. The anchoring is also what keeps a
-      # `:depends-on ((:version "asdf" "3.3.1"))` line from being mistaken for
-      # the system's own version: such a line does not match end to end.
-      asdVersion =
-        asd:
-        let
-          lines = nixpkgs.lib.splitString "\n" (builtins.readFile asd);
-          versionLine = builtins.head (
-            builtins.filter (line: builtins.match "[[:space:]]*:version \"[^\"]*\"" line != null) lines
-          );
-        in
-        builtins.head (builtins.match "[[:space:]]*:version \"([^\"]*)\"" versionLine);
+      # cl-nix-forge's dedicated .asd :version lexer, replacing this flake's
+      # own hand-rolled line-by-line regex. `cl-nix-forge.lib` is per-system,
+      # but `fromAsdSystem` itself is not -- it only reads a text file -- so
+      # any one system's instance works, the same `builtins.head systems`
+      # pattern cl-json-kit's and cl-weave's own flake.nix use for the same
+      # reason. Strictly stronger than the regex it replaces: cl-process-kit.asd
+      # declares FOUR systems (cl-process-kit, /test, /pty, /pty-test) sharing
+      # one version, and fromAsdSystem fails the build loudly if any of them
+      # ever disagreed, rather than silently reading whichever :version line
+      # happened to come first in the file.
+      cl = cl-nix-forge.lib.${builtins.head systems};
 
       # Single source of truth for the package version: the `:version` form in
       # cl-process-kit.asd. A release only ever edits the .asd file and every
       # Nix package (default, pty, docs) follows automatically.
-      version = asdVersion ./cl-process-kit.asd;
+      version = cl.fromAsdSystem ./cl-process-kit.asd;
 
       # Sibling versions are read out of each pinned source's own .asd for the
       # same reason. Hardcoding them here duplicates a fact that lives
@@ -100,8 +107,8 @@
       # cl-log-kit 1.6.0 for a tag that never existed, and kept claiming it
       # after the input was corrected to v1.0.0, because nothing links the
       # string to the source it labels.
-      clBoundaryKitVersion = asdVersion "${cl-boundary-kit}/cl-boundary-kit.asd";
-      clLogKitVersion = asdVersion "${cl-log-kit}/cl-log-kit.asd";
+      clBoundaryKitVersion = cl.fromAsdSystem "${cl-boundary-kit}/cl-boundary-kit.asd";
+      clLogKitVersion = cl.fromAsdSystem "${cl-log-kit}/cl-log-kit.asd";
 
       # treefmt drives `nix fmt` and the `checks.<system>.formatting` gate.
       # Scope is Nix only: nixfmt is a low-diff, zero-footgun formatter,

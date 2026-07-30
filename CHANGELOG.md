@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `flake.nix`'s `.asd` `:version` extraction now uses `cl-nix-forge`'s
+  dedicated `fromAsdSystem` lexer (new flake input, pinned `v0.4.0`) instead
+  of a hand-rolled line-by-line regex. Strictly stronger, not just shorter:
+  `cl-process-kit.asd` declares four systems sharing one version
+  (`cl-process-kit`, `/test`, `/pty`, `/pty-test`), and the old regex read
+  whichever `:version` line happened to come first with no cross-check,
+  while `fromAsdSystem` fails the build loudly if any of them ever
+  disagreed. `cl-nix-forge` is the org's own shared Nix/ASDF-derivation
+  library; adopted only for this one function here, not for a full
+  `mkPackageFlake` migration -- no other nerima-lisp repo has yet migrated
+  a flake with this project's native C compilation and custom check-count
+  complexity, so a full rewrite stays a deliberately deferred, separately
+  evaluated decision.
+
 ### Changed (BREAKING)
 
 - `next-process-event` now returns a single `process-event-step` struct
