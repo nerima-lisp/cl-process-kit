@@ -57,7 +57,14 @@
 ;; 542/666 (removing the struct's initial per-slot :TYPE declarations, which
 ;; briefly added 2 genuinely uncovered type-check branches, restored it to
 ;; the exact prior figure) -- only the expression floor moves.
-(defparameter +minimum-expression-coverage+ 87.4
+;; 87.4 -> 87.7: extracting %TASK-SUBMIT-OUTPUT's and %TASK-FINISH's
+;; identical "flush pending-drops into an :OVERFLOW event" block
+;; (src/async-events.lisp) into a shared %FLUSH-PENDING-DROPS-EVENT, via
+;; `paredit refactor extract-function --at <offset> --infer-params`, raised
+;; this to 87.8% (4172/4754) -- fewer total points to begin with, same "less
+;; duplicated code, less to cover" effect as prior dedups. Set to 87.7, not
+;; 87.8, for the usual raw-vs-display headroom.
+(defparameter +minimum-expression-coverage+ 87.7
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
 
 ;; 81.5 -> 81.4: unifying %WAIT-UNTIL-TERMINAL/%WAIT-UNTIL-GROUP-GONE/
@@ -82,7 +89,14 @@
 ;; written as exactly 81.4 -- set 81.3 with real headroom below the raw
 ;; value, not just below its rounded display, so this exact display-vs-raw
 ;; trap cannot silently fail the next dedup too.
-(defparameter +minimum-branch-coverage+ 81.3
+;; 81.3 -> 81.4: the same %FLUSH-PENDING-DROPS-EVENT extraction raised this
+;; to 81.5% (541/664) -- and this time uncovered branches genuinely dropped,
+;; 124 -> 123, not just a proportional denominator shrink: covered fell by
+;; only 1 (542 -> 541) while total fell by 2 (666 -> 664), so one of the two
+;; duplicate copies' branch arms was better-exercised than the other and the
+;; merge inherited the more-covered version. Set to 81.4 for the usual raw
+;; (541/664 = 81.4759%) vs. display headroom.
+(defparameter +minimum-branch-coverage+ 81.4
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()

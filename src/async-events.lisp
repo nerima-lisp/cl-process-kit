@@ -41,6 +41,21 @@
               (setf (%process-task-callback-error-history-start task) start
                     (%process-task-callback-error-history-count task) count))))))))
 
+(defun %flush-pending-drops-event (task)
+  "If TASK has any pending dropped-event count and its queue currently has
+room, push one :OVERFLOW PROCESS-EVENT summarizing them, reset the
+counter, and notify a waiter. A no-op otherwise. Call with TASK's
+queue-mutex already held. %TASK-SUBMIT-OUTPUT and %TASK-FINISH share this
+exact flush shape, differing only in whether they wait for room first."
+  (when (and (plusp (%process-task-pending-drops task))
+             (< (%process-task-queue-count task) (%process-task-capacity task)))
+    (push (%make-process-event :kind :overflow :sequence (%task-next-sequence task)
+                               :dropped-count (%process-task-pending-drops task))
+          (%process-task-queue task))
+    (incf (%process-task-queue-count task))
+    (setf (%process-task-pending-drops task) 0)
+    (sb-thread:condition-notify (%process-task-queue-ready task))))
+
 (defun %task-submit-output (task kind octets)
   (let ((token (%process-task-token task)))
     (sb-thread:with-mutex ((%process-task-queue-mutex task))
@@ -50,14 +65,7 @@
             do (sb-thread:condition-wait (%process-task-queue-space task)
                                          (%process-task-queue-mutex task)))
       (when (cancellation-requested-p token) (return-from %task-submit-output nil))
-      (when (and (plusp (%process-task-pending-drops task))
-                 (< (%process-task-queue-count task) (%process-task-capacity task)))
-        (push (%make-process-event :kind :overflow :sequence (%task-next-sequence task)
-                                   :dropped-count (%process-task-pending-drops task))
-              (%process-task-queue task))
-        (incf (%process-task-queue-count task))
-        (setf (%process-task-pending-drops task) 0)
-        (sb-thread:condition-notify (%process-task-queue-ready task)))
+      (%flush-pending-drops-event task)
       (if (>= (%process-task-queue-count task) (%process-task-capacity task))
           (progn
             (incf (%process-task-pending-drops task))
@@ -78,12 +86,7 @@
                      (>= (%process-task-queue-count task) (%process-task-capacity task)))
           do (sb-thread:condition-wait (%process-task-queue-space task)
                                        (%process-task-queue-mutex task)))
-    (when (plusp (%process-task-pending-drops task))
-      (push (%make-process-event :kind :overflow :sequence (%task-next-sequence task)
-                                 :dropped-count (%process-task-pending-drops task))
-            (%process-task-queue task))
-      (incf (%process-task-queue-count task))
-      (setf (%process-task-pending-drops task) 0))
+    (%flush-pending-drops-event task)
     (setf (%process-task-terminal-event task)
           (%make-process-event :kind :terminal :sequence (%task-next-sequence task)
                                :result result :condition condition)

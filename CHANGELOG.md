@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Extracted `%task-submit-output`'s and `%task-finish`'s identical "flush
+  pending-drops into an `:overflow` event" block (`src/async-events.lisp`)
+  into a shared `%flush-pending-drops-event`, via `paredit refactor
+  extract-function --at <offset> --infer-params`. Raised the coverage
+  ratchet floors to match (expression 87.4% -> 87.7%, branch 81.3% ->
+  81.4%): the dedup genuinely closed one branch gap (124 -> 123 uncovered),
+  not just diluted the denominator.
+
 ### Added
 
 - Both test entry points (`run-tests.lisp`, `run-pty-tests.lisp`) now bind
