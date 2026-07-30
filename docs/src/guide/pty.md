@@ -42,6 +42,8 @@ returns the same result directly); it is `nil` beforehand.
   group, and `pty-signal-foreground` signals only that group after
   validating it belongs to the session — the PTY analogue of
   `process-send-group-signal`.
+- `pty-try-wait` and `pty-alive-p` check liveness without blocking -- the
+  PTY analogues of `process-try-wait`/`process-alive-p`.
 - `pty-wait` accepts `timeout` and `cancellation-token` and escalates to
   session-wide SIGTERM/SIGKILL the same way `communicate` does (see
   [Cancellation](cancellation.md)).

@@ -255,12 +255,24 @@ pipe, a test harness, CI)."
            (return (%try-wait process nil :timed-out-p (eq flag :timeout)
                               :cancelled-p (eq flag :cancel)))))
 
+(defun pty-try-wait (process)
+  "Return PROCESS's PROCESS-RESULT if its session leader has already
+terminated, else NIL, without blocking. The PTY analogue of
+PROCESS-TRY-WAIT."
+  (check-type process pty-process)
+  (%try-wait process t))
+
+(defun pty-alive-p (process)
+  "True while PROCESS's session leader is still running. The PTY analogue
+of PROCESS-ALIVE-P."
+  (null (pty-try-wait process)))
+
 (defun pty-wait (process &key timeout cancellation-token)
   (check-type process pty-process)
   (let ((deadline (and timeout
                        (+ (get-internal-real-time) (* timeout internal-time-units-per-second)))))
     (loop
-      for result = (%try-wait process t)
+      for result = (pty-try-wait process)
       when result return result
       when (and cancellation-token (cancellation-requested-p cancellation-token))
         return (%terminate-and-wait process :cancel)

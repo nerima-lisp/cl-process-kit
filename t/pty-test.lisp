@@ -92,3 +92,14 @@
       (expect result :to-have-timed-out)
       (expect (= (process-kit::process-result-signal result) 9) :to-be-truthy)
       (expect (eq result (process-kit/pty:pty-wait process)) :to-be-truthy))))
+
+(it "pty-try-wait and pty-alive-p report liveness without blocking"
+  (process-kit/pty:with-pty-process
+      (process (process-kit/pty:spawn-pty
+                (process-kit::make-command "/bin/sh" (list "-c" "sleep 0.2; exit 0"))))
+    (expect (process-kit/pty:pty-try-wait process) :to-be-null)
+    (expect (process-kit/pty:pty-alive-p process) :to-be-truthy)
+    (let ((result (process-kit/pty:pty-wait process :timeout 2)))
+      (expect (= (process-kit::process-result-exit-code result) 0) :to-be-truthy)
+      (expect (eq (process-kit/pty:pty-try-wait process) result) :to-be-truthy)
+      (expect (process-kit/pty:pty-alive-p process) :to-be nil))))

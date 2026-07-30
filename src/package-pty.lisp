@@ -58,5 +58,7 @@ cl-tty-kit.")
    #:pty-signal-foreground
 
    ;; completion
+   #:pty-try-wait
+   #:pty-alive-p
    #:pty-wait
    #:pty-process-result))

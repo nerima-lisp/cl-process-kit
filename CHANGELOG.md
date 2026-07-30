@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `process-kit/pty:pty-try-wait`/`pty-alive-p`: non-blocking liveness
+  checks for a PTY session, the analogues of `process-try-wait`/
+  `process-alive-p`. Found the same way as `with-pty-process` two commits
+  earlier -- comparing the PTY subsystem's public surface against the
+  main library's and finding `pty-wait` (blocking, possibly escalating)
+  had no non-blocking counterpart. `pty-wait`'s own polling loop now
+  calls the public `pty-try-wait` instead of the internal `%try-wait`
+  directly, matching `process-wait`'s existing call-the-public-function
+  convention in `process-handle.lisp`.
+
 - `process-kit/pty:with-pty-process`/`call-with-pty-process`: the PTY
   analogue of `with-process`/`call-with-process`'s continuation-passing
   cleanup contract, binding a variable to a `spawn-pty` result for a body
