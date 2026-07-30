@@ -100,12 +100,13 @@ call is a no-op. Return PROCESS."
   process)
 
 (defun %wait-until-process-group-gone (process timeout)
-  (let ((deadline (+ (get-internal-real-time) (* timeout internal-time-units-per-second))))
-    (loop
-      (process-try-wait process)
-      (unless (%process-group-alive-p process) (return t))
-      (when (>= (get-internal-real-time) deadline) (return nil))
-      (sleep +default-poll-interval+))))
+  "The same DONEP as COMMUNICATE.LISP's %WAIT-UNTIL-GROUP-GONE -- CLOSE-
+PROCESS has no injectable clock/sleeper of its own to pass through, so this
+uses the real system clock/SLEEP directly rather than threading DI params
+through just for this one caller."
+  (flet ((seconds () (/ (get-internal-real-time) internal-time-units-per-second)))
+    (%poll-until (lambda () (process-try-wait process) (not (%process-group-alive-p process)))
+                 (+ (seconds) timeout) +default-poll-interval+ #'seconds #'sleep)))
 
 (defun close-process (process &key (terminate t) (timeout +default-close-timeout-seconds+))
   "Terminate PROCESS's group (SIGTERM, escalating to SIGKILL after TIMEOUT

@@ -61,6 +61,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   81.4%): the dedup genuinely closed one branch gap (124 -> 123 uncovered),
   not just diluted the denominator.
 
+- Unified three near-duplicate deadline-polling loops onto the single
+  `%poll-until` primitive that `communicate.lisp`/`pipeline.lisp` already
+  shared -- found by grepping for the "loop until a predicate is true or a
+  deadline passes, sleeping between checks" shape directly, since it
+  differs enough call to call (different clock sources, a returned value
+  vs. a boolean) that the exact-match `paredit inspect duplicates` tool
+  cannot see it as one shape. `%poll-until` itself is now defined in
+  `process-handle.lisp` (the earliest-loading file among its callers, so
+  both `process-group.lisp` and `communicate.lisp` can reach it) and
+  generalized to accept a NIL `deadline` for an unbounded wait:
+  - `process-handle.lisp`'s `process-wait` now delegates to `%poll-until`
+    instead of hand-rolling the same loop; a genuine (not just cosmetic)
+    fix falls out of this, since `%poll-until` caps its final sleep at
+    whatever time is actually left before the deadline, where the old loop
+    always slept the full `poll-interval` regardless -- `process-wait`
+    could previously overshoot its deadline by up to `poll-interval`
+    before ever re-checking.
+  - `process-group.lisp`'s `%wait-until-process-group-gone` now delegates
+    to the same `%poll-until` instead of a hand-rolled copy of exactly the
+    donep `communicate.lisp`'s own `%wait-until-group-gone` already used --
+    the two are the same "process group is gone" check, previously written
+    down twice.
+  - `%poll-until`'s own docstring previously claimed "this is the one
+    place [every deadline-bounded wait] is written down," which was false
+    given the two hand-rolled copies above; corrected, and now explains why
+    `process-kit/pty`'s `pty-wait` deliberately keeps its own copy (a
+    genuinely different, three-way donep with no clock/sleeper injection,
+    not an oversight).
+  Verified via two full `nix flake check` runs (the first hit the
+  documented `SETUP-SERVE-EVENT-PIPE` flake on `await-process`, an
+  unrelated async-cursor test that shares no code with any of the three
+  functions touched here; the second was fully green, 180/180, coverage
+  88.0%/82.1%, both above the ratchet floor).
+
 - Extracted `run-pipeline`'s inline thread-spawning `loop`/`lambda` block
   (`src/pipeline.lisp`) into a named `spawn-stage-threads` sibling inside
   the same `labels` form as the pre-existing `await-pipeline-stages`.

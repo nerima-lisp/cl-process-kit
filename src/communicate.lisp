@@ -55,21 +55,6 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
    (%sleeper-p sleeper)
    "SLEEPER must be a CL-BOUNDARY-KIT sleeper boundary (see CL-BOUNDARY-KIT:MAKE-SLEEPER)."))
 
-(defun %poll-until (donep deadline poll clock-fn sleep-fn)
-  "Call DONEP (no arguments); if it is not yet true, sleep via SLEEP-FN for
-whatever is left of POLL before DEADLINE (in CLOCK-FN's units) and check
-again. Returns T the moment DONEP is true, or NIL once DEADLINE passes first.
-
-Every deadline-bounded wait in this library -- for a single process to exit,
-for a process group to disappear, for a whole list of pipeline stages to
-finish -- is this same shape with a different DONEP; this is the one place it
-is written down."
-  (loop
-    (when (funcall donep) (return t))
-    (let ((remaining (- deadline (funcall clock-fn))))
-      (when (<= remaining 0) (return nil))
-      (funcall sleep-fn (min remaining poll)))))
-
 (defun %wait-until-terminal (process deadline poll clock-fn sleep-fn)
   (%poll-until (lambda () (not (process-alive-p process))) deadline poll clock-fn sleep-fn))
 

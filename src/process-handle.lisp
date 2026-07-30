@@ -117,6 +117,28 @@ without blocking."
   (check-type process process-handle)
   (%cache-terminal-result process))
 
+(defun %poll-until (donep deadline poll clock-fn sleep-fn)
+  "Call DONEP (no arguments); if it is not yet true, sleep via SLEEP-FN for
+whatever is left of POLL before DEADLINE (in CLOCK-FN's units, or NIL for no
+bound) and check again. Returns T the moment DONEP is true, or NIL once
+DEADLINE passes first.
+
+Every deadline-bounded wait in the core `process-kit` system -- PROCESS-WAIT
+just below, a process group disappearing (process-group.lisp), a single
+COMMUNICATE call or a whole pipeline finishing (communicate.lisp,
+pipeline.lisp) -- is this same shape with a different DONEP; this is the one
+place it is written down. `process-kit/pty`'s PTY-WAIT intentionally keeps
+its own copy: it is a separate system with a three-way DONEP (also checking
+cancellation) and no injected clock/sleeper, so sharing this one would mean
+adding parameters it has no use for."
+  (loop
+    (when (funcall donep) (return t))
+    (if deadline
+        (let ((remaining (- deadline (funcall clock-fn))))
+          (when (<= remaining 0) (return nil))
+          (funcall sleep-fn (min remaining poll)))
+        (funcall sleep-fn poll))))
+
 (defun process-wait (process &key timeout (poll-interval +default-poll-interval+)
                                 (clock +default-clock+))
   "Block, polling every POLL-INTERVAL seconds, until PROCESS terminates or
@@ -127,12 +149,13 @@ NIL on timeout."
   (%ensure (%clock-p clock)
            "CLOCK must be a CL-BOUNDARY-KIT clock boundary (see CL-BOUNDARY-KIT:MAKE-CLOCK).")
   (when timeout (check-type timeout (real 0)))
-  (let* ((start (cl-boundary-kit:clock-monotonic clock))
-         (deadline (and timeout (+ start timeout))))
-    (loop for result = (process-try-wait process)
-          when result return result
-          when (and deadline (>= (cl-boundary-kit:clock-monotonic clock) deadline)) return nil
-          do (sleep poll-interval))))
+  (let ((result nil))
+    (%poll-until (lambda () (setf result (process-try-wait process)))
+                 (and timeout (+ (cl-boundary-kit:clock-monotonic clock) timeout))
+                 poll-interval
+                 (lambda () (cl-boundary-kit:clock-monotonic clock))
+                 #'sleep)
+    result))
 
 (defun process-exit-code (process)
   "Return PROCESS's exit code once it has exited normally, else NIL (still
