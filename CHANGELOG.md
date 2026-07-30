@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-31
+
 ### Added
 
 - `process-kit/pty:pty-try-wait`/`pty-alive-p`: non-blocking liveness
