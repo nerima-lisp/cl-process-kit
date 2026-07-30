@@ -4,6 +4,10 @@
   (define-condition native-process-launch-error (process-launch-error)
     ((phase :initarg :phase :reader native-process-launch-error-phase)
      (errno :initarg :errno :reader native-process-launch-error-errno))
+    (:documentation
+     "Signaled when SPAWN-NATIVE's trampoline (native/spawn.c) reports a
+setup failure before exec. PHASE is the launch step that failed (see
++NATIVE-SPAWN-PHASES+); ERRNO is the C errno recorded at that step.")
     (:report
      (lambda (condition stream)
        (format stream "Native subprocess launch failed during ~S (errno ~D)."

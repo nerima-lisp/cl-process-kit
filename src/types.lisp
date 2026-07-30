@@ -35,10 +35,22 @@
                 (&key kind sequence octets result condition dropped-count))
             (:conc-name %process-event-)
             (:copier nil))
+  "One entry in a PROCESS-TASK's ordered event stream, published by
+COMMUNICATE-ASYNC. KIND is :STDOUT, :STDERR, :OVERFLOW, or :TERMINAL;
+SEQUENCE is its monotonically increasing position; OCTETS holds raw output
+for :STDOUT/:STDERR; RESULT/CONDITION hold the terminal outcome for
+:TERMINAL; DROPPED-COUNT is the cumulative drop count summarized by an
+:OVERFLOW event. Read with PROCESS-EVENT-KIND, -SEQUENCE, -OCTETS, -RESULT,
+-CONDITION, and -DROPPED-COUNT."
   kind sequence octets result condition dropped-count)
 
 (defstruct (process-event-step
             (:constructor make-process-event-step (event cursor status gap-count)))
+  "One NEXT-PROCESS-EVENT step. EVENT is the delivered PROCESS-EVENT or NIL;
+CURSOR is the value to pass as :CURSOR on the following call; STATUS is
+:EVENT, :GAP, :TERMINAL, or :TIMEOUT; GAP-COUNT is nonzero only when STATUS
+is :GAP. Read with PROCESS-EVENT-STEP-EVENT, -CURSOR, -STATUS, and
+-GAP-COUNT."
   (event nil :read-only t)
   (cursor nil :read-only t)
   (status nil :read-only t)
@@ -48,6 +60,11 @@
             (:constructor %make-process-task)
             (:conc-name %process-task-)
             (:copier nil))
+  "COMMUNICATE-ASYNC's returned handle: a mutex-guarded PROCESS-EVENT queue
+plus dispatcher/worker thread bookkeeping. Inspect it with TASK-STATE,
+TASK-RESULT, TASK-CONDITION, PROCESS-EVENTS, NEXT-PROCESS-EVENT,
+CALLBACK-ERRORS, DROPPED-EVENT-COUNT, and the PROCESS-TASK-* history
+accessors; drive it with AWAIT-PROCESS and CANCEL-PROCESS."
   process
   token
   (mutex (sb-thread:make-mutex :name "process-kit task state"))

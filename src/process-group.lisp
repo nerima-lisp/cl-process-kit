@@ -61,8 +61,12 @@ re-signals the original condition."
   (%signal-process-group process signal :allow-terminal-leader t))
 
 (defun process-terminate (process &optional (signal +default-timeout-signal+))
+  "Send SIGNAL (default SIGTERM) to the process group PROCESS owns. A no-op
+if PROCESS's group is not owned or already gone."
   (%signal-process-group process signal))
 (defun process-kill (process &optional (signal +default-kill-signal+))
+  "Send SIGNAL (default SIGKILL) to the process group PROCESS owns. A no-op
+if PROCESS's group is not owned or already gone."
   (%signal-process-group process signal))
 
 (defun process-send-leader-signal (process signal)
@@ -83,6 +87,8 @@ re-signals the original condition."
     (%signal-process-group process signal)))
 
 (defun close-process-streams (process)
+  "Close PROCESS's stdin/stdout/stderr streams, once. Idempotent: a repeat
+call is a no-op. Return PROCESS."
   (check-type process process-handle)
   (let ((streams (with-locked-process-state (state process)
                     (unless (%process-state-streams-closed-p state)
@@ -102,6 +108,10 @@ re-signals the original condition."
       (sleep +default-poll-interval+))))
 
 (defun close-process (process &key (terminate t) (timeout +default-close-timeout-seconds+))
+  "Terminate PROCESS's group (SIGTERM, escalating to SIGKILL after TIMEOUT
+if TERMINATE is true), wait for it to be reaped, close its streams, and
+return PROCESS. Safe to call more than once or on an already-terminated
+PROCESS. The cleanup CALL-WITH-PROCESS/WITH-PROCESS perform automatically."
   (check-type process process-handle)
   (when (and terminate (%process-group-alive-p process))
     (%signal-process-group process +default-timeout-signal+ :allow-terminal-leader t)

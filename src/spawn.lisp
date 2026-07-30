@@ -224,6 +224,11 @@ part stays in each clause."
     (otherwise policy)))
 
 (defun spawn-command (command &key stdin stdout stderr)
+  "SPAWN a COMMAND-SPEC: the low-level asynchronous primitive that reads its
+I/O policy, environment, search behavior, and directory from COMMAND's own
+slots. :STDIN/:STDOUT/:STDERR each override the spec's own policy for that
+stream when supplied. RUN-COMMAND is built on this the way RUN is built on
+SPAWN."
   (check-type command command-spec)
   (let* ((environment (%command-environment command))
          (program (command-program command))

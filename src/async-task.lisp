@@ -35,6 +35,8 @@ this file follows."
 (define-task-reader task-condition %process-task-condition)
 
 (defun process-events (task)
+  "Return TASK's currently retained PROCESS-EVENT history as a fresh list,
+oldest first, bounded by its :EVENT-HISTORY-CAPACITY."
   (check-type task process-task)
   (sb-thread:with-mutex ((%process-task-mutex task))
     (%bounded-ring-contents
@@ -42,6 +44,8 @@ this file follows."
      (%process-task-event-history-count task))))
 
 (defun process-task-first-event-sequence (task)
+  "Return the SEQUENCE of the oldest event TASK still retains, or NIL if its
+history is currently empty."
   (check-type task process-task)
   (sb-thread:with-mutex ((%process-task-mutex task))
     (when (plusp (%process-task-event-history-count task))
@@ -232,6 +236,9 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
       (launch-communicate-async-threads task process communication-options token))))
 
 (defun await-process (task &key timeout)
+  "Block until TASK's COMMUNICATE-ASYNC run finishes or TIMEOUT (NIL for no
+bound) elapses. Return its PROCESS-RESULT, re-signaling any condition the
+worker thread captured, or NIL on timeout while TASK is still running."
   (check-type task process-task)
   (%ensure (or (null timeout) (and (realp timeout) (not (minusp timeout))))
            "TIMEOUT must be NIL or non-negative.")
@@ -244,6 +251,9 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
       (values (%process-task-result task) t))))
 
 (defun cancel-process (task)
+  "Request cancellation of TASK's COMMUNICATE-ASYNC run via its owned
+cancellation token and wake any thread blocked in AWAIT-PROCESS or
+NEXT-PROCESS-EVENT. Does not itself block; return TASK."
   (check-type task process-task)
   (cancel (%process-task-token task))
   (sb-thread:with-mutex ((%process-task-queue-mutex task))

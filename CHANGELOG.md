@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Docstrings for every remaining undocumented exported symbol: the
+  `process-handle`/`process-event`/`process-event-step`/`process-task`
+  structs, `process-id`/`process-stdin`/`process-output`/`process-stderr`/
+  `process-status`/`process-try-wait`/`process-wait`/`process-exit-code`/
+  `process-signal`/`process-alive-p`, `process-terminate`/`process-kill`,
+  `close-process`/`close-process-streams`, `spawn-command`,
+  `native-process-launch-error`, `await-process`/`cancel-process`,
+  `process-events`/`process-task-first-event-sequence`, and `run/checked`.
+  The org-wide `API_STANDARD.md` measures docstring coverage of exported
+  definitions per repo; cl-process-kit sat at 31% (13/42), second-lowest
+  in the org, against 7 sibling repos already at 100%.
 - `.github/dependabot.yml`, `.github/CODEOWNERS`, `.github/pull_request_template.md`,
   and `.github/ISSUE_TEMPLATE/` (bug report, feature request, and a config
   linking to private security advisories), matching the convention already

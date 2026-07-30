@@ -100,6 +100,8 @@ itself never introduces a shell on its own."
   (apply #'run "/bin/sh" (list "-c" command) options))
 
 (defun run/checked (command arguments &rest options)
+  "Run COMMAND with ARGUMENTS and signal PROCESS-CANCELLED-ERROR or
+PROCESS-EXIT-ERROR unless it succeeds."
   (let ((result (apply #'run command arguments options)))
     (cond
       ((process-result-cancelled-p result) (error 'process-cancelled-error :result result))
