@@ -15,6 +15,14 @@ PROCESS-KIT::+DEFAULT-POLL-INTERVAL+ -- the same value, by convention, but
 a separate tunable, since cl-process-kit/pty is an optional, independently
 loadable subsystem.")
 
+(defparameter +timeout-signal+ 15
+  "SIGTERM, sent by %TERMINATE-AND-WAIT's first attempt. Kept local for the
+same reason as +POLL-INTERVAL+.")
+
+(defparameter +kill-signal+ 9
+  "SIGKILL, sent by %TERMINATE-AND-WAIT if +TIMEOUT-SIGNAL+ alone did not
+end the session in time. Kept local for the same reason as +POLL-INTERVAL+.")
+
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (member :sbcl *features*) (error "cl-process-kit/pty requires SBCL.")))
 
@@ -225,14 +233,14 @@ pipe, a test harness, CI)."
                                 :cancelled-p cancelled-p)))))))
 
 (defun %terminate-and-wait (process flag)
-  (ignore-errors (%native-signal-session (pty-process-pid process) 15))
+  (ignore-errors (%native-signal-session (pty-process-pid process) +timeout-signal+))
   (loop repeat 25
         for result = (%try-wait process t :timed-out-p (eq flag :timeout)
                                           :cancelled-p (eq flag :cancel))
         when result return result
         do (sleep +poll-interval+)
         finally
-           (ignore-errors (%native-signal-session (pty-process-pid process) 9))
+           (ignore-errors (%native-signal-session (pty-process-pid process) +kill-signal+))
            (return (%try-wait process nil :timed-out-p (eq flag :timeout)
                               :cancelled-p (eq flag :cancel)))))
 

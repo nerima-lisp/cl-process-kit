@@ -60,8 +60,10 @@ re-signals the original condition."
 (defun %signal-process-group-after-leader-exit (process signal)
   (%signal-process-group process signal :allow-terminal-leader t))
 
-(defun process-terminate (process &optional (signal 15)) (%signal-process-group process signal))
-(defun process-kill (process &optional (signal 9)) (%signal-process-group process signal))
+(defun process-terminate (process &optional (signal +default-timeout-signal+))
+  (%signal-process-group process signal))
+(defun process-kill (process &optional (signal +default-kill-signal+))
+  (%signal-process-group process signal))
 
 (defun process-send-leader-signal (process signal)
   "Send SIGNAL only to the live process-group leader."

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Named two more bare SIGTERM(`15`)/SIGKILL(`9`) literals:
+  `process-terminate`/`process-kill`'s (`src/process-group.lisp`)
+  `&optional` defaults now reference `+default-timeout-signal+`/
+  `+default-kill-signal+` directly, and `src/pty.lisp`'s
+  `%terminate-and-wait` gets its own local `+timeout-signal+`/
+  `+kill-signal+` (same package-boundary reasoning as `+poll-interval+`).
 - Unified four more bare `0.01`/`0.01d0` poll-interval literals
   (`%wait-until-process-group-gone`, `process-wait`'s `:poll-interval`
   default, and two loops in `src/pty.lisp`) that duplicated
