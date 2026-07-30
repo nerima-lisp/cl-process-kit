@@ -141,7 +141,30 @@ result."
            (worker-errors (make-array count :initial-element nil))
            (completed-count 0)
            (state-lock (sb-thread:make-mutex :name "process-kit pipeline state")))
-      (labels ((await-pipeline-stages (threads)
+      (labels ((spawn-stage-threads ()
+                 "Start one COMMUNICATE-driving thread per stage in PROCESSES,
+each recording its PIPELINE-RESULT/worker-error into the shared RESULTS/
+WORKER-ERRORS arrays under STATE-LOCK on completion. Returns the list of
+threads for AWAIT-PIPELINE-STAGES to join."
+                 (loop for process in processes
+                       for index from 0
+                       for command in commands
+                       collect
+                       (sb-thread:make-thread
+                        (let ((stage-process process) (stage-index index)
+                              (stage-command command))
+                          (lambda ()
+                            (multiple-value-bind (result worker-error)
+                                (%communicate-pipeline-stage
+                                 stage-process (and (zerop stage-index) input)
+                                 timeout grace-period
+                                 cancellation-token max-output-characters stage-command)
+                              (sb-thread:with-mutex (state-lock)
+                                (setf (aref results stage-index) result
+                                      (aref worker-errors stage-index) worker-error)
+                                (incf completed-count)))))
+                        :name "process-kit pipeline stage")))
+               (await-pipeline-stages (threads)
                  "Poll until every stage thread has recorded a result or one
 signals a worker error, terminating the remaining stages on error; then
 join every thread (escalating to a forced stream close, then signaling
@@ -183,26 +206,7 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                (setf pipes (nreverse pipes))
                (setf processes (%spawn-pipeline-stages commands pipes input grace-period))
                (%close-pipeline-streams pipes)
-               (let ((threads
-                       (loop for process in processes
-                             for index from 0
-                             for command in commands
-                             collect
-                             (sb-thread:make-thread
-                              (let ((stage-process process) (stage-index index)
-                                    (stage-command command))
-                                (lambda ()
-                                  (multiple-value-bind (result worker-error)
-                                      (%communicate-pipeline-stage
-                                       stage-process (and (zerop stage-index) input)
-                                       timeout grace-period
-                                       cancellation-token max-output-characters stage-command)
-                                    (sb-thread:with-mutex (state-lock)
-                                      (setf (aref results stage-index) result
-                                            (aref worker-errors stage-index) worker-error)
-                                      (incf completed-count)))))
-                              :name "process-kit pipeline stage"))))
-                 (await-pipeline-stages threads))
+               (await-pipeline-stages (spawn-stage-threads))
                (%build-pipeline-result (coerce results 'list) commands timeout
                                        on-timeout on-cancel started #'clock))
           (unless (every #'process-handle-reaped-p processes)

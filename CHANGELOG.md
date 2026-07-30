@@ -61,6 +61,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   81.4%): the dedup genuinely closed one branch gap (124 -> 123 uncovered),
   not just diluted the denominator.
 
+- Extracted `run-pipeline`'s inline thread-spawning `loop`/`lambda` block
+  (`src/pipeline.lisp`) into a named `spawn-stage-threads` sibling inside
+  the same `labels` form as the pre-existing `await-pipeline-stages`.
+  Found via a fresh size-ranked scan of every `src/*.lisp` function
+  (`paredit inspect outline --output json`): `run-pipeline` was the
+  codebase's 2nd-largest function and, unlike its neighbors
+  `communicate-async`/`communicate`, had never had its inline
+  thread-spawning lambda pulled into a named function. Hand-authored
+  rather than via `paredit refactor extract-function --infer-params`,
+  since that flag mishandles `loop`'s clause-keyword syntax (`for`/`in`/
+  `collect` read as ordinary symbols to infer as parameters). `run-pipeline`
+  itself now reads as a linear sequence -- build pipes, spawn stages, close
+  write ends, `(await-pipeline-stages (spawn-stage-threads))`, build
+  result -- with no behavior change.
+
 ### Added
 
 - Both test entry points (`run-tests.lisp`, `run-pty-tests.lisp`) now bind
