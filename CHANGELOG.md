@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A new `nix flake check` gate, `noForbiddenMarkers`, that fails the build if
+  `TODO`/`FIXME`/`XXX`/`adapter`/`backward-compat` ever appears in `src`,
+  `t`, `docs`, `README.md`, or `CHANGELOG.md`. These have been repeatedly
+  verified absent by hand across many refactoring passes; this turns that
+  one-off verification into a standing invariant CI enforces on every push,
+  the same way `run-tests.lisp`'s coverage ratchet turns a coverage target
+  into a gate instead of a number checked once and left to drift.
 - Standard ASDF `test-op` wiring: `(asdf:test-system :cl-process-kit)` and
   `(asdf:test-system :cl-process-kit/pty)` now work directly, matching
   `cl-weave` and `cl-boundary-kit`'s `:in-order-to ((test-op (test-op

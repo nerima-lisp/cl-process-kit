@@ -265,6 +265,27 @@
                 touch "$out/passed"
               '';
 
+          # Dead code, TODO/FIXME markers, adapter layers around a
+          # nerima-lisp dependency, and backward-compatibility shims have all
+          # been repeatedly verified absent by hand across many refactoring
+          # passes -- this turns that one-off verification into a standing
+          # invariant CI enforces on every push, the same way the coverage
+          # ratchet in run-tests.lisp turns a coverage target into a gate
+          # instead of a number checked once and left to drift.
+          noForbiddenMarkers =
+            pkgs.runCommand "cl-process-kit-no-forbidden-markers" { nativeBuildInputs = [ pkgs.gnugrep ]; }
+              ''
+                cd ${self}
+                if grep -rniE 'TODO|FIXME|XXX|adapter|backward.?compat' \
+                    --include='*.lisp' --include='*.asd' --include='*.md' \
+                    src t docs README.md CHANGELOG.md; then
+                  echo "Forbidden marker found above -- this project keeps zero" >&2
+                  echo "TODO/FIXME/XXX/adapter/backward-compat markers." >&2
+                  exit 1
+                fi
+                touch "$out"
+              '';
+
           # Fails `nix flake check` when any tracked Nix file is unformatted,
           # turning the formatter into an enforced CI gate rather than a habit.
           formatting = treefmtEval.${system}.config.build.check self;
