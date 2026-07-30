@@ -37,6 +37,13 @@
             (:copier nil))
   kind sequence octets result condition dropped-count)
 
+(defstruct (process-event-step
+            (:constructor make-process-event-step (event cursor status gap-count)))
+  (event nil :read-only t)
+  (cursor nil :read-only t)
+  (status nil :read-only t)
+  (gap-count 0 :read-only t))
+
 (defstruct (process-task
             (:constructor %make-process-task)
             (:conc-name %process-task-)

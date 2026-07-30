@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- `next-process-event` now returns a single `process-event-step` struct
+  (`process-event-step-event`/`-cursor`/`-status`/`-gap-count`) instead of
+  four raw values. The org-wide `API_STANDARD.md` names this exact function,
+  by name, as the canonical bad example of returning more than two values
+  (`(values a b)` at most, or a struct beyond that) -- a caller that only
+  wanted `gap-count` had to destructure all four positionally. Requires a
+  major version bump at the next release per `CODING_STANDARD.md`'s
+  versioning policy ("関数の必須引数の変更...既定の挙動の変更" -- a change to a
+  function's return contract).
+- Lowered the `run-tests.lisp` expression coverage ratchet floor,
+  87.5% -> 87.4%, to absorb `process-event-step`'s compile-time-only
+  `defstruct` form (raw 4168/4764 = 87.4895%, every runtime arm still
+  tested). Branch floor unchanged: removing the struct's initial per-slot
+  `:type` declarations, which briefly introduced 2 uncovered type-check
+  branches, restored branch coverage to its exact prior figure (542/666).
+
 ### Added
 
 - `.github/dependabot.yml`, `.github/CODEOWNERS`, `.github/pull_request_template.md`,

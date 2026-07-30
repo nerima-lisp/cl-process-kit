@@ -144,11 +144,10 @@
       (expect (await-process task) :to-be-truthy)
       (let ((walked nil) (cursor nil))
         (loop
-          (multiple-value-bind (event next-cursor status gap-count) (next-process-event task :cursor cursor)
-            (declare (ignore gap-count))
-            (setf cursor next-cursor)
-            (case status
-              (:event (push event walked))
+          (let ((step (next-process-event task :cursor cursor)))
+            (setf cursor (process-event-step-cursor step))
+            (case (process-event-step-status step)
+              (:event (push (process-event-step-event step) walked))
               (t (return)))))
         (setf walked (nreverse walked))
         (expect (equal (mapcar (function process-event-sequence) walked)
@@ -160,10 +159,9 @@
     (let* ((process (spawn "/bin/sh" (list "-c" "printf hi") :output :stream :error :stream))
            (task (communicate-async process :result-type :octets :event-history-capacity 1)))
       (expect (await-process task) :to-be-truthy)
-      (multiple-value-bind (event next-cursor status gap-count) (next-process-event task :cursor 1)
-        (declare (ignore event next-cursor))
-        (expect status :to-be :gap)
-        (expect (plusp gap-count) :to-be-truthy))))
+      (let ((step (next-process-event task :cursor 1)))
+        (expect (process-event-step-status step) :to-be :gap)
+        (expect (plusp (process-event-step-gap-count step)) :to-be-truthy))))
 
   (it "rejects a non-positive cursor and a negative timeout"
     (let* ((process (spawn "/bin/sh" (list "-c" "printf hi") :output :stream :error :stream))
@@ -188,10 +186,9 @@
   (it "next-process-event returns :timeout when no event arrives before the deadline"
     (let* ((process (%spawn-sleeping "1"))
            (task (communicate-async process)))
-      (multiple-value-bind (event next-cursor status gap-count) (next-process-event task :timeout 0.01d0)
-        (declare (ignore next-cursor gap-count))
-        (expect event :to-be-null)
-        (expect status :to-be :timeout))
+      (let ((step (next-process-event task :timeout 0.01d0)))
+        (expect (process-event-step-event step) :to-be-null)
+        (expect (process-event-step-status step) :to-be :timeout))
       (cancel-process task)
       (await-process task)))
 

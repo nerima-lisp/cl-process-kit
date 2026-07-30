@@ -89,7 +89,9 @@ than this function returning a value for the caller to check."
       (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task))))
 
 (defun next-process-event (task &key cursor timeout)
-  "Return EVENT, NEXT-CURSOR, STATUS, and GAP-COUNT for one independent consumer."
+  "Return a PROCESS-EVENT-STEP for one independent consumer: its EVENT (or
+NIL), the CURSOR to pass on the following call, STATUS (:EVENT, :GAP,
+:TERMINAL, or :TIMEOUT), and GAP-COUNT (nonzero only when STATUS is :GAP)."
   (check-type task process-task)
   (%ensure (or (null cursor) (and (integerp cursor) (plusp cursor)))
            "CURSOR must be NIL or a positive sequence number.")
@@ -104,14 +106,18 @@ than this function returning a value for the caller to check."
                (requested (or cursor first-sequence 1)))
           (when (and last-sequence (< requested (or first-sequence (1+ last-sequence))))
             (let ((resume (or first-sequence (1+ last-sequence))))
-              (return-from next-process-event (values nil resume :gap (- resume requested)))))
+              (return-from next-process-event
+                (make-process-event-step nil resume :gap (- resume requested)))))
           (let ((event (%task-history-event-at-sequence task requested)))
-            (when event (return-from next-process-event (values event (1+ requested) :event 0))))
+            (when event
+              (return-from next-process-event
+                (make-process-event-step event (1+ requested) :event 0))))
           (unless (member (%process-task-state task) '(:reserved :running) :test #'eq)
-            (return-from next-process-event (values nil requested :terminal 0)))
+            (return-from next-process-event
+              (make-process-event-step nil requested :terminal 0)))
           (%wait-on-task task deadline
                          (lambda () (return-from next-process-event
-                                      (values nil requested :timeout 0)))))))))
+                                      (make-process-event-step nil requested :timeout 0)))))))))
 
 (defun callback-errors (task)
   (check-type task process-task)

@@ -77,6 +77,9 @@ compose specs without a shell.")
    #:process-task #:communicate-async #:await-process #:cancel-process
    #:task-state #:task-result #:task-condition
    #:process-events #:next-process-event
+   #:process-event-step #:process-event-step-p #:make-process-event-step
+   #:process-event-step-event #:process-event-step-cursor
+   #:process-event-step-status #:process-event-step-gap-count
    #:process-task-first-event-sequence #:process-task-last-event-sequence
    #:process-task-history-evicted-count
    #:callback-errors #:dropped-event-count

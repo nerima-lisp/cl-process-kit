@@ -134,16 +134,19 @@ caller-owned cursor:
 
 ```lisp
 (next-process-event task &key cursor timeout)
-  => event, next-cursor, status, gap-count
+  => a PROCESS-EVENT-STEP
 ```
 
 `cursor` is `nil` (start at the oldest retained event) or a positive
-sequence number; `status` is:
+sequence number. The returned `process-event-step` exposes four readers:
+`process-event-step-event`, `process-event-step-cursor` (pass this as
+`:cursor` on the following call), `process-event-step-status`, and
+`process-event-step-gap-count`. `process-event-step-status` is:
 
 | Status | Meaning |
 | --- | --- |
-| `:event` | An event was returned; use `next-cursor` for the following call. |
-| `:gap` | The cursor fell behind the retained history — resume from `next-cursor`; `gap-count` is the exact number of events skipped. |
+| `:event` | An event was returned; use `process-event-step-cursor` for the following call. |
+| `:gap` | The cursor fell behind the retained history — resume from `process-event-step-cursor`; `process-event-step-gap-count` is the exact number of events skipped. |
 | `:terminal` | The task has finished and no further events remain. |
 | `:timeout` | The call's own non-negative `timeout` expired first. |
 
