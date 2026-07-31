@@ -11,8 +11,9 @@ the authoritative gate -- see
 ## Public Surface Impact
 
 Describe any change to `spawn`/`run`/`run-command`/`run-pipeline`/
-`communicate`/`communicate-async`'s public `&key` surface, exported
-conditions, or `CHANGELOG.md`.
+`communicate`/`communicate-async`'s public `&key` surface or exported
+conditions. Anything user-visible here belongs in the next release's
+GitHub Release description.
 
 ## Follow-up Risk
 

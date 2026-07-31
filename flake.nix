@@ -80,10 +80,12 @@
       ...
     }:
     let
-      systems = [
-        "x86_64-linux"
-        "aarch64-darwin"
-      ];
+      # x86_64-linux only, per the 2026-08-01 revision of PACKAGE_STANDARD.md.
+      # aarch64-darwin was dropped because the only thing verifying it was a
+      # local `nix flake check` nobody is required to run; CI builds Linux and
+      # nothing else. Consequence: `nix develop` and `nix build` no longer
+      # resolve on macOS. Development happens on Linux.
+      systems = [ "x86_64-linux" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
 
       # cl-nix-forge's dedicated .asd :version lexer, replacing this flake's
@@ -150,7 +152,6 @@
             fileset = pkgs.lib.fileset.unions [
               ./docs/mkdocs.yml
               ./docs/src
-              ./CHANGELOG.md
             ];
           };
           nativeBuildInputs = [ pkgs.python3Packages.mkdocs-material ];
@@ -398,11 +399,12 @@
           # ratchet in run-tests.lisp turns a coverage target into a gate
           # instead of a number checked once and left to drift.
           #
-          # CHANGELOG.md is deliberately excluded: it is a historical record
-          # that legitimately describes fixing or preventing exactly these
-          # things (this check's own changelog entry is the first example),
-          # which is not the same as one of them being left active in the
-          # tree.
+          # The scan covers src, t, docs and README.md only. It used to also
+          # note that CHANGELOG.md was deliberately excluded, being a
+          # historical record that legitimately describes fixing or preventing
+          # exactly these things; that file no longer exists, and the release
+          # history it held now lives in the GitHub Release description, which
+          # is not in the tree and so is out of this check's reach either way.
           noForbiddenMarkers =
             pkgs.runCommand "cl-process-kit-no-forbidden-markers" { nativeBuildInputs = [ pkgs.gnugrep ]; }
               ''
@@ -419,8 +421,8 @@
 
           # No src/ or t/ file has ever needed to exceed this: the largest
           # today is communicate.lisp at 295 lines. 500 is cl-weave's own
-          # stated org guideline (see its CHANGELOG's "no source file
-          # exceeds 500 lines" entry), adopted verbatim rather than
+          # stated org guideline ("no source file exceeds 500 lines"),
+          # adopted verbatim rather than
           # inventing a different number -- a file crossing it is exactly
           # the moment `paredit refactor split-file`/`move-form` should
           # split it, the way async-task.lisp and run-test.lisp already

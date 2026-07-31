@@ -53,7 +53,7 @@
               (/ consed 1048576.0) (/ consed n 1024.0)))))
 
 (format t "~&== cl-process-kit benchmarks ==~%")
-(format t "See performance-floor memory notes (or CHANGELOG.md) before~%")
+(format t "See performance-floor memory notes before~%")
 (format t "interpreting absolute latency numbers -- they are dominated by~%")
 (format t "SB-EXT:RUN-PROGRAM's own child-launch cost on this platform.~%~%")
 

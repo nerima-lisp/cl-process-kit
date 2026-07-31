@@ -1,20 +1,26 @@
 ;;;; cl-process-kit.asd
 
+;;;; This form comes FIRST, before any defsystem. ASDF binds *package* to
+;;;; ASDF-USER only for a file it loads itself; read any other way -- a REPL
+;;;; `load`, an editor evaluating the buffer, flake.nix parsing :version -- the
+;;;; file is read in whatever package happens to be current. Saying it makes
+;;;; the file self-contained.
+(in-package #:asdf-user)
+
 (asdf:defsystem "cl-process-kit"
   :description "SBCL-only process execution toolkit"
   :long-description "A timeout-aware subprocess runner for SBCL, inspired by
 Python's subprocess.run() and Node.js's child_process.spawn(). Consolidates
 the ad-hoc \"timeout-guarded process launch\" logic previously reimplemented
 across several sister projects into a single, reusable library."
-  :version "2.0.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
+  :version "2.0.0"
   :homepage "https://github.com/nerima-lisp/cl-process-kit"
   :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
   :depends-on (:asdf :cl-boundary-kit :cl-log-kit)
-  :in-order-to ((test-op (test-op "cl-process-kit/test")))
   :pathname "src"
   :serial t
   :components
@@ -35,7 +41,8 @@ across several sister projects into a single, reusable library."
    (:file "async-events")
    (:file "async-task")
    (:file "run")
-   (:file "pipeline")))
+   (:file "pipeline"))
+  :in-order-to ((test-op (test-op "cl-process-kit/test"))))
 
 (asdf:defsystem "cl-process-kit/test"
   :description "Test system for cl-process-kit"

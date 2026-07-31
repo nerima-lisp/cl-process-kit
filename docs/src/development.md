@@ -41,8 +41,9 @@ guide, three expectations are specific to this repository.
   [`paredit-cli`](https://github.com/nerima-lisp/paredit-cli) over
   hand-editing balanced-parenthesis code when reshaping existing forms.
 
-Record user-visible changes under `## [Unreleased]` in `CHANGELOG.md`; the
-release workflow extracts that version's section as the GitHub Release body.
+Record user-visible changes in the GitHub Release description when the tag is
+published; it is the only canonical release history. The release workflow
+opens an empty draft release for exactly that.
 
 Beyond example-based `describe`/`it`/`expect` tests, the suite uses
 [`cl-weave`](https://github.com/nerima-lisp/cl-weave)'s `it-property` for
@@ -83,7 +84,8 @@ diverge exactly where this library works: signal delivery, process-group
 reaping, and whether closing a descriptor interrupts a thread already blocked
 reading it (macOS/BSD do; Linux does not). Two real defects shipped in 0.2.0
 were invisible on macOS and obvious on Linux — see 1.0.0's `### Correctness`
-notes in the [changelog](changelog.md).
+notes in the
+[release notes](https://github.com/nerima-lisp/cl-process-kit/releases).
 
 Two habits follow. Never name a program a guard-clause test does not intend
 to execute: `/bin/true` does not exist on macOS, so a
