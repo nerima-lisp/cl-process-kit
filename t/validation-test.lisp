@@ -48,7 +48,9 @@
         (:stdin :stdout))
        ("an unknown :stdout policy" "/bin/true" nil (:stdout :nope))
        ("an unknown :result-type" "/bin/true" nil (:result-type :bogus))
-       ("an unknown :decoding-error-policy" "/bin/true" nil (:decoding-error-policy :bogus)))
+       ("an unknown :decoding-error-policy" "/bin/true" nil (:decoding-error-policy :bogus))
+       ("an :external-format CL-CODEC-KIT does not register" "/bin/true" nil
+        (:external-format :shift-jis)))
       "rejects ~A"
       (label program arguments keyword-plist)
     (declare (ignore label))
@@ -65,7 +67,12 @@
       (expect (command-arguments command) :to-equal '("a" "b"))
       ;; Mutating the caller's list must not reach into the spec.
       (setf (car args) "mutated")
-      (expect (command-arguments command) :to-equal '("a" "b")))))
+      (expect (command-arguments command) :to-equal '("a" "b"))))
+
+  (it "accepts any CL-CODEC-KIT-registered :external-format, not just :utf-8/:default"
+    (dolist (encoding '(:default :utf-8 :ascii :iso-8859-1 :utf-16be :ucs-2le))
+      (expect (command-p (make-command "echo" nil :external-format encoding))
+              :to-be-truthy))))
 
 (describe "native-spawn pure helpers"
   (it "maps every phase code to its keyword, unknown codes included"

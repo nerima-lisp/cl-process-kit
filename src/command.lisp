@@ -21,6 +21,20 @@
                 (%copy-command-data (cdr value))))
     (t value)))
 
+(defun %codec-kit-encoding (external-format)
+  "Map EXTERNAL-FORMAT (an SBCL-style external-format designator, as accepted
+by COMMAND-EXTERNAL-FORMAT) onto the CL-CODEC-KIT encoding designator it
+denotes. :DEFAULT maps to :UTF-8, matching CL-CODEC-KIT's own
+*DEFAULT-ENCODING*; every other value is passed straight through, since
+%VALID-EXTERNAL-FORMAT-P below (via MAKE-COMMAND) is what actually
+guarantees it names a registered encoding."
+  (if (eq external-format :default) :utf-8 external-format))
+
+(defun %valid-external-format-p (external-format)
+  (or (eq external-format :default)
+      (handler-case (progn (cl-codec-kit:find-character-encoding external-format) t)
+        (cl-codec-kit:unsupported-encoding () nil))))
+
 (defun %valid-stdio-policy-p (value role)
   (or (streamp value)
       (pathnamep value)
@@ -85,6 +99,9 @@
   (%ensure (member result-type '(:string :octets)) "RESULT-TYPE must be :STRING or :OCTETS.")
   (%ensure (member decoding-error-policy '(:replace :error))
            "DECODING-ERROR-POLICY must be :REPLACE or :ERROR.")
+  (%ensure (%valid-external-format-p external-format)
+           "EXTERNAL-FORMAT must be :DEFAULT or a CL-CODEC-KIT-registered encoding ~
+designator: ~S" external-format)
   (%make-command-spec
    :program (%copy-command-data program) :arguments (%copy-command-data arguments)
    :search search

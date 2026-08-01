@@ -74,9 +74,9 @@ forfeit, which is precisely what blowing the drain deadline means."
              (let ((buffer (make-string +default-copy-buffer-size+)))
                (loop for count = (read-sequence buffer input)
                      while (plusp count)
-                     for octets = (sb-ext:string-to-octets
+                     for octets = (cl-codec-kit:string-to-octets
                                    buffer :end count
-                                   :external-format (stream-external-format input))
+                                   :encoding (%codec-kit-encoding (stream-external-format input)))
                      do (emit octets (length octets))))))
     (cond
       ((subtypep (stream-element-type input) '(unsigned-byte 8)) (copy-octets))
@@ -209,7 +209,8 @@ copier hit on its own, before any of this, are re-signalled at the end."
              (etypecase input
                (string
                 (%write-process-octets
-                 stream (sb-ext:string-to-octets input :external-format external-format)))
+                 stream (cl-codec-kit:string-to-octets
+                         input :encoding (%codec-kit-encoding external-format))))
                ((vector (unsigned-byte 8)) (%write-process-octets stream input))
                (stream
                 (if (subtypep (stream-element-type input) '(unsigned-byte 8))
@@ -223,8 +224,9 @@ copier hit on its own, before any of this, are re-signalled at the end."
                             while (plusp count)
                             do (%write-process-octets
                                 stream
-                                (sb-ext:string-to-octets buffer :end count
-                                                         :external-format external-format))))))))
+                                (cl-codec-kit:string-to-octets
+                                 buffer :end count
+                                 :encoding (%codec-kit-encoding external-format)))))))))
         (close stream)))))
 
 (defun %start-feeder (process input external-format)

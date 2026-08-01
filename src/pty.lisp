@@ -104,7 +104,7 @@ instead of being repeated -- and risking drift -- at every call site."
 (define-pty-syscall close sb-alien:int (fd sb-alien:int))
 
 (defun %string-block (strings)
-  (let* ((encoded (mapcar (lambda (string) (sb-ext:string-to-octets string :external-format :utf-8))
+  (let* ((encoded (mapcar (lambda (string) (cl-codec-kit:string-to-octets string :encoding :utf-8))
                           strings))
          (size (reduce #'+ encoded :key (lambda (octets) (1+ (length octets))) :initial-value 0))
          (storage (make-array (max 1 size) :element-type '(unsigned-byte 8) :initial-element 0))
@@ -186,13 +186,15 @@ pipe, a test harness, CI)."
   (length octets))
 
 (defun pty-read-string (process &key (size +default-pty-read-size+))
-  (sb-ext:octets-to-string (pty-read-octets process :size size)
-                           :external-format (pty-process-external-format process)))
+  (cl-codec-kit:octets-to-string
+   (pty-read-octets process :size size)
+   :encoding (process-kit::%codec-kit-encoding (pty-process-external-format process))))
 
 (defun pty-write-string (process string)
   (pty-write-octets
    process
-   (sb-ext:string-to-octets string :external-format (pty-process-external-format process))))
+   (cl-codec-kit:string-to-octets
+    string :encoding (process-kit::%codec-kit-encoding (pty-process-external-format process)))))
 
 (defun pty-resize (process rows cols)
   (check-type rows terminal-dimension)

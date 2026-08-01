@@ -241,5 +241,15 @@
   (it "run signals process-io-error for invalid UTF-8 when decoding-error-policy is :error"
     (signals process-io-error
       (run "/bin/sh" (list "-c" "printf '\\377'")
-           :external-format :utf-8 :decoding-error-policy :error))))
+           :external-format :utf-8 :decoding-error-policy :error)))
+
+  (it "run decodes and encodes a non-UTF-8 :external-format end to end"
+    ;; #xE9 is one octet under ISO-8859-1 (é) but the second byte of a
+    ;; 2-octet UTF-8 sequence -- a round trip through the wrong encoding
+    ;; would either fail to decode or decode as a different character,
+    ;; so this exercises CL-CODEC-KIT actually reaching every I/O path
+    ;; (not just :UTF-8/:DEFAULT, which every other test here uses).
+    (let* ((input (string (code-char #xE9)))
+           (result (run "cat" nil :input input :external-format :iso-8859-1 :search t)))
+      (expect (string= (process-result-stdout result) input) :to-be-truthy))))
 

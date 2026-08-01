@@ -54,15 +54,28 @@ The `stdin`, `stdout`, and `stderr` policies accept `:inherit`, `:null`,
 
 `result-type` is `:string` or `:octets`.
 
+## Text encoding
+
+`external-format` is `:default` (UTF-8) or any encoding designator
+[`cl-codec-kit`](https://github.com/nerima-lisp/cl-codec-kit) registers --
+`:utf-8`, `:utf-16be`/`:utf-16le`, `:utf-32be`/`:utf-32le`, `:ucs-2be`/`:ucs-2le`,
+`:ascii`, `:iso-8859-1`, and their aliases. `make-command` rejects any other
+designator immediately, including the generic, byte-order-sensing `:utf-16`/
+`:utf-32`/`:ucs-2` (each senses its byte-order mark once per decode call,
+which is unsafe across the repeated, streaming decode calls captured output
+goes through) and any SBCL external-format `cl-codec-kit` does not yet
+implement.
+
 ## Decoding errors
 
 `decoding-error-policy` controls what happens when captured output isn't
 valid text under `external-format`, and applies only when `result-type` is
 `:string`. It is `:replace` by default: malformed byte sequences are
-substituted with the Unicode replacement character, and for UTF-8 the
-decoder holds back an incomplete multi-byte sequence at a read-buffer
-boundary until the rest arrives rather than misreading it as invalid.
-`:error` instead signals [`process-io-error`](../reference/results-and-conditions.md#condition-hierarchy)
+substituted with the Unicode replacement character, and the decoder holds
+back an incomplete multi-byte character at a read-buffer boundary until the
+rest arrives rather than misreading it as invalid -- for every supported
+`external-format`, not just UTF-8. `:error` instead signals
+[`process-io-error`](../reference/results-and-conditions.md#condition-hierarchy)
 the first time a malformed sequence is encountered. This option is shared
 by [`run`/`communicate`](execution.md#options-shared-across-the-family) —
 `make-command`'s `decoding-error-policy` is simply the `command-spec`-driven

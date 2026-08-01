@@ -6,7 +6,7 @@
     # release tests pass, so it is less likely to land a broken build.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # These four nerima-lisp packages are consumed as raw ASDF source trees
+    # These five nerima-lisp packages are consumed as raw ASDF source trees
     # (cl-nix-forge `lispDerivation` `src`, or CL_SOURCE_REGISTRY at
     # runtime) -- this flake never touches any of their own
     # `packages`/`checks` outputs. `flake = false` fetches just the source
@@ -15,7 +15,7 @@
     # cl-boundary-kit/cl-log-kit's cl-json-kit) never enter this flake's
     # lock file.
     #
-    # That is also why these four carry no `inputs.nixpkgs.follows`: the org
+    # That is also why these five carry no `inputs.nixpkgs.follows`: the org
     # standard mandates it so an input cannot drag in a second nixpkgs, but a
     # `flake = false` input has no inputs of its own to redirect. Writing the
     # line here would resolve to nothing and only suggest to a reader that
@@ -48,6 +48,14 @@
       url = "github:nerima-lisp/cl-tty-kit/v1.0.2";
       flake = false;
     };
+    # cl-process-kit.asd's REAL (non-test) dependency of both :cl-process-kit
+    # and :cl-process-kit/pty as of the v3.0.0 codec migration: src/capture.lisp,
+    # src/pty.lisp, and src/copier.lisp delegate their UTF-8/octet handling to
+    # it instead of calling SB-EXT:OCTETS-TO-STRING/STRING-TO-OCTETS directly.
+    cl-codec-kit = {
+      url = "github:nerima-lisp/cl-codec-kit/v0.2.0";
+      flake = false;
+    };
 
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
@@ -75,6 +83,7 @@
       cl-boundary-kit,
       cl-log-kit,
       cl-tty-kit,
+      cl-codec-kit,
       treefmt-nix,
       cl-nix-forge,
       ...
@@ -114,6 +123,7 @@
       clBoundaryKitVersion = cl.fromAsdSystem "${cl-boundary-kit}/cl-boundary-kit.asd";
       clLogKitVersion = cl.fromAsdSystem "${cl-log-kit}/cl-log-kit.asd";
       clTtyKitVersion = cl.fromAsdSystem "${cl-tty-kit}/cl-tty-kit.asd";
+      clCodecKitVersion = cl.fromAsdSystem "${cl-codec-kit}/cl-codec-kit.asd";
       clWeaveVersion = cl.fromAsdSystem "${cl-weave}/cl-weave.asd";
 
       # `native/` (C sources for the spawn trampoline and the PTY backend)
@@ -178,7 +188,7 @@
       # cannot drift from what packages.cl-process-kit itself ships.
       spawnCflags = "-std=c11 -O2 -Wall -Wextra -Werror";
 
-      # Every ASDF-based derivation for one `system`: the two nerima-lisp
+      # Every ASDF-based derivation for one `system`: the three nerima-lisp
       # runtime dependencies, the cl-weave check-time dependency, the two
       # native artifacts, and cl-process-kit's own two ASDF systems built on
       # top of them. Centralized so `packages` and `checks` build the exact
@@ -216,6 +226,11 @@
             lispSystem = "cl-tty-kit";
             version = clTtyKitVersion;
             src = cl-tty-kit;
+          };
+          clCodecKit = clForSystem.lispDerivation {
+            lispSystem = "cl-codec-kit";
+            version = clCodecKitVersion;
+            src = cl-codec-kit;
           };
           # Check-only: never enters packages.cl-process-kit's own
           # lispDependencies, only lispCheckDependencies below.
@@ -274,6 +289,7 @@
             lispDependencies = [
               clBoundaryKit
               clLogKit
+              clCodecKit
             ];
             lispCheckDependencies = [ clWeave ];
             # perl/coreutils are check-only (t/native-spawn-test.sh's own
@@ -320,6 +336,7 @@
             lispDependencies = [
               clProcessKit
               clTtyKit
+              clCodecKit
             ];
             lispCheckDependencies = [ clWeave ];
             # `nativeLibraries` alone is not enough here: src/pty.lisp reads
@@ -496,7 +513,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
+          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-codec-kit}//:${cl-weave}//:${self}//";
           test = pkgs.writeShellApplication {
             name = "cl-process-kit-test";
             runtimeInputs = [
@@ -532,7 +549,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-weave}//:${self}//";
+          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-codec-kit}//:${cl-weave}//:${self}//";
         in
         {
           default = pkgs.mkShell {
