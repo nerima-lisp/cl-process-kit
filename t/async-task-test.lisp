@@ -8,7 +8,7 @@
   #+linux
   (cl-weave:it-skip
    "communicate-async reports overflow without losing the terminal event"
-   "flaky under CI contention: asserts group death within a 0.1s grace period (see the release notes)")
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see release notes)")
   #-linux
   (it "communicate-async reports overflow without losing the terminal event"
     (let* ((seen nil)
@@ -56,7 +56,7 @@
   #+linux
   (cl-weave:it-skip
    "cancels blocked asynchronous output without failing the task"
-   "flaky under CI contention: asserts group death within a 0.1s grace period (see the release notes)")
+   "flaky under CI contention: asserts group death within a 0.1s grace period (see release notes)")
   #-linux
   (it "cancels blocked asynchronous output without failing the task"
     (let* ((process (spawn "/bin/sh" (list "-c" "yes x | head -c 1000000; sleep 5")
