@@ -243,6 +243,20 @@
       (run "/bin/sh" (list "-c" "printf '\\377'")
            :external-format :utf-8 :decoding-error-policy :error)))
 
+  (it "run replaces output truncated at true EOF with exactly one replacement"
+    ;; #xE3 #x81 is two of the three bytes UTF-8 needs for one character, with
+    ;; nothing more ever coming -- one malformed attempt, not two. Regression
+    ;; test for a cl-codec-kit bug (fixed in v0.3.1, this project's pin
+    ;; bumped alongside it) where %CAPTURE-VALUE's final, non-streaming flush
+    ;; of a truncated PENDING-OCTETS fragment resumed by RESYNC-WIDTH past the
+    ;; truncation and re-decoded the leftover byte as a second, spurious
+    ;; leading byte -- rather than consuming the whole fragment as the single
+    ;; malformed attempt it is, which is what the mid-stream, streaming-safe
+    ;; decode path (LENIENT-DECODE-PREFIX) already got right.
+    (let ((result (run "/bin/sh" (list "-c" "printf 'ab\\343\\201'") :external-format :utf-8)))
+      (expect (string= (process-result-stdout result) (format nil "ab~C" (code-char #xFFFD)))
+              :to-be-truthy)))
+
   (it "run decodes and encodes a non-UTF-8 :external-format end to end"
     ;; #xE9 is one octet under ISO-8859-1 (é) but the second byte of a
     ;; 2-octet UTF-8 sequence -- a round trip through the wrong encoding

@@ -53,7 +53,7 @@
     # src/pty.lisp, and src/copier.lisp delegate their UTF-8/octet handling to
     # it instead of calling SB-EXT:OCTETS-TO-STRING/STRING-TO-OCTETS directly.
     cl-codec-kit = {
-      url = "github:nerima-lisp/cl-codec-kit/v0.2.0";
+      url = "github:nerima-lisp/cl-codec-kit/v0.3.1";
       flake = false;
     };
 
