@@ -38,6 +38,28 @@
       url = "github:nerima-lisp/cl-log-kit/v2.0.1";
       flake = false;
     };
+    # None of the three is a dependency cl-process-kit names anywhere.
+    # cl-log-kit v2.0.1's own `:depends-on` is `((:version "cl-date-kit" "0.2.0")
+    # (:version "cl-concurrent-kit" "0.1.0") (:version "cl-host-kit" "0.2.0"))`,
+    # and `lispDerivation` resolves a system's graph only from the
+    # `lispDependencies` it is handed, never from the .asd -- so the edges are
+    # invisible until they are spelled out. They were: `nix flake check` failed
+    # with `Component "cl-date-kit" not found, required by #<SYSTEM
+    # "cl-log-kit">`, and had been failing that way on every commit.
+    #
+    # All three are `:depends-on ()` leaves, so none widens the graph further.
+    cl-date-kit = {
+      url = "github:nerima-lisp/cl-date-kit/v0.3.0";
+      flake = false;
+    };
+    cl-concurrent-kit = {
+      url = "github:nerima-lisp/cl-concurrent-kit/v0.5.0";
+      flake = false;
+    };
+    cl-host-kit = {
+      url = "github:nerima-lisp/cl-host-kit/v0.3.0";
+      flake = false;
+    };
     cl-tty-kit = {
       # Plain github: (not git+https with submodules=1): cl-tty-kit no longer
       # vendors nerima-lisp/cl-prolog as a git submodule as of v1.0.0 -- it is
@@ -82,6 +104,9 @@
       cl-weave,
       cl-boundary-kit,
       cl-log-kit,
+      cl-date-kit,
+      cl-concurrent-kit,
+      cl-host-kit,
       cl-tty-kit,
       cl-codec-kit,
       treefmt-nix,
@@ -128,6 +153,9 @@
       # string to the source it labels.
       clBoundaryKitVersion = cl.fromAsdSystem "${cl-boundary-kit}/cl-boundary-kit.asd";
       clLogKitVersion = cl.fromAsdSystem "${cl-log-kit}/cl-log-kit.asd";
+      clDateKitVersion = cl.fromAsdSystem "${cl-date-kit}/cl-date-kit.asd";
+      clConcurrentKitVersion = cl.fromAsdSystem "${cl-concurrent-kit}/cl-concurrent-kit.asd";
+      clHostKitVersion = cl.fromAsdSystem "${cl-host-kit}/cl-host-kit.asd";
       clTtyKitVersion = cl.fromAsdSystem "${cl-tty-kit}/cl-tty-kit.asd";
       clCodecKitVersion = cl.fromAsdSystem "${cl-codec-kit}/cl-codec-kit.asd";
       clWeaveVersion = cl.fromAsdSystem "${cl-weave}/cl-weave.asd";
@@ -223,15 +251,40 @@
             src = cl-boundary-kit;
             lispDependencies = [ clLogKit ];
           };
+          # cl-log-kit v2.0.1's three `:depends-on` edges, spelled out because
+          # `lispDerivation` reads the graph from here and not from the .asd.
+          clDateKit = clForSystem.lispDerivation {
+            lispSystem = "cl-date-kit";
+            version = clDateKitVersion;
+            src = cl-date-kit;
+          };
+          clConcurrentKit = clForSystem.lispDerivation {
+            lispSystem = "cl-concurrent-kit";
+            version = clConcurrentKitVersion;
+            src = cl-concurrent-kit;
+          };
+          clHostKit = clForSystem.lispDerivation {
+            lispSystem = "cl-host-kit";
+            version = clHostKitVersion;
+            src = cl-host-kit;
+          };
           clLogKit = clForSystem.lispDerivation {
             lispSystem = "cl-log-kit";
             version = clLogKitVersion;
             src = cl-log-kit;
+            lispDependencies = [
+              clDateKit
+              clConcurrentKit
+              clHostKit
+            ];
           };
+          # cl-tty-kit v1.2.0's own `:depends-on ("cl-codec-kit")`, same
+          # invisible-edge problem as cl-log-kit's above.
           clTtyKit = clForSystem.lispDerivation {
             lispSystem = "cl-tty-kit";
             version = clTtyKitVersion;
             src = cl-tty-kit;
+            lispDependencies = [ clCodecKit ];
           };
           clCodecKit = clForSystem.lispDerivation {
             lispSystem = "cl-codec-kit";
