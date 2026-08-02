@@ -129,6 +129,7 @@ nav:
       - Asynchronous Execution: guide/async.md
       - Cancellation: guide/cancellation.md
       - Pipelines: guide/pipelines.md
+      - File-Descriptor Readiness: guide/fd-readiness.md
       - Native Spawn Trampoline: guide/native-spawn.md
       - PTY Backend: guide/pty.md
       - Structured Logging: guide/logging.md

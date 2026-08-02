@@ -61,6 +61,8 @@ extra build step; see
   cancellation, streaming output with `spawn`, and pipelines
 - [Command Specifications](https://nerima-lisp.github.io/cl-process-kit/guide/command-specs/) —
   the full option reference behind every call
+- [File-Descriptor Readiness](https://nerima-lisp.github.io/cl-process-kit/guide/fd-readiness/) —
+  `select-fds` / `wait-for-input` for event loops over raw descriptors
 - [Results and Conditions](https://nerima-lisp.github.io/cl-process-kit/reference/results-and-conditions/) —
   the `process-error` hierarchy and result accessors
 - [Compatibility](https://nerima-lisp.github.io/cl-process-kit/reference/compatibility/) —

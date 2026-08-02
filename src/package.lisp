@@ -56,6 +56,13 @@ compose specs without a shell.")
    #:process-group-isolation-error
    #:process-group-isolation-error-pid #:process-group-isolation-error-pgid
    #:process-io-error #:process-io-error-stream #:process-io-error-cause
+   #:fd-set-overflow #:fd-set-overflow-fd #:fd-set-overflow-limit
+   #:fd-wait-failed #:fd-wait-failed-errno
+   #:fd-wait-failed-read-fds #:fd-wait-failed-write-fds #:fd-wait-failed-except-fds
+
+   ;; fd readiness: select(2) over raw file descriptors
+   #:select-fds #:wait-for-input
+   #:+fd-set-size+ #:+maximum-fd+ #:+maximum-fd-wait-seconds+
 
    ;; process-handle: the low-level asynchronous primitive
    #:spawn #:spawn-command

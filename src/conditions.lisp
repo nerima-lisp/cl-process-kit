@@ -104,3 +104,21 @@ CONDITION and STREAM bound; an empty REPORT omits :REPORT entirely."
     (condition stream)
   (format stream "Failed while draining subprocess ~A."
           (process-io-error-stream condition)))
+
+(define-process-condition fd-set-overflow (process-error)
+    (fd limit)
+    (condition stream)
+  (format stream "File descriptor ~D is above ~D, the highest select(2) can watch here."
+          (fd-set-overflow-fd condition)
+          (fd-set-overflow-limit condition)))
+
+(define-process-condition fd-wait-failed (process-error)
+    (errno read-fds write-fds except-fds)
+    (condition stream)
+  (format stream "Waiting on file descriptors (read ~S, write ~S, except ~S) ~
+failed with errno ~D: ~A."
+          (fd-wait-failed-read-fds condition)
+          (fd-wait-failed-write-fds condition)
+          (fd-wait-failed-except-fds condition)
+          (fd-wait-failed-errno condition)
+          (sb-int:strerror (fd-wait-failed-errno condition))))

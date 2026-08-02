@@ -29,6 +29,7 @@ across several sister projects into a single, reusable library."
    (:file "conditions")
    (:file "parameters")
    (:file "logging")
+   (:file "fd-readiness")
    (:file "command")
    (:file "process-handle")
    (:file "process-group")
@@ -62,7 +63,7 @@ across several sister projects into a single, reusable library."
   :components
   ((:file "package") (:file "conditions-test") (:file "spawn-test") (:file "native-spawn-test")
    (:file "run-test") (:file "run-timeout-test") (:file "process-handle-test") (:file "pipeline-test")
-   (:file "async-task-test")
+   (:file "async-task-test") (:file "fd-readiness-test")
    (:file "logging-test") (:file "edge-coverage-test") (:file "validation-test")
    (:file "property-test") (:file "mutation-test") (:file "performance-test")))
 
