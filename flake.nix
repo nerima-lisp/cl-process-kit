@@ -27,15 +27,15 @@
     # default branch, so an upstream push to main would break this repo's CI
     # without warning.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v1.1.0";
+      url = "github:nerima-lisp/cl-weave/v1.1.4";
       flake = false;
     };
     cl-boundary-kit = {
-      url = "github:nerima-lisp/cl-boundary-kit/v1.0.0";
+      url = "github:nerima-lisp/cl-boundary-kit/v2.0.1";
       flake = false;
     };
     cl-log-kit = {
-      url = "github:nerima-lisp/cl-log-kit/v1.0.0";
+      url = "github:nerima-lisp/cl-log-kit/v2.0.1";
       flake = false;
     };
     cl-tty-kit = {
@@ -45,7 +45,7 @@
       # depends on, never :CL-TTY-KIT itself. This flake only ever builds the
       # base :cl-tty-kit system (see the `cl-process-kit/pty` .asd system), so
       # cl-prolog is not part of this dependency graph at all.
-      url = "github:nerima-lisp/cl-tty-kit/v1.0.2";
+      url = "github:nerima-lisp/cl-tty-kit/v1.2.0";
       flake = false;
     };
     # cl-process-kit.asd's REAL (non-test) dependency of both :cl-process-kit
@@ -53,7 +53,7 @@
     # src/pty.lisp, and src/copier.lisp delegate their UTF-8/octet handling to
     # it instead of calling SB-EXT:OCTETS-TO-STRING/STRING-TO-OCTETS directly.
     cl-codec-kit = {
-      url = "github:nerima-lisp/cl-codec-kit/v0.3.1";
+      url = "github:nerima-lisp/cl-codec-kit/v0.4.0";
       flake = false;
     };
 
