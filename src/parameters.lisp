@@ -64,7 +64,10 @@ call). Still small enough that one chunk's ENCODING/EMIT work stays a bounded,
 short critical section.")
 
 (defun %monotonic-seconds ()
-  "The real monotonic clock, in seconds, used as +DEFAULT-CLOCK+'s reading."
+  "The real monotonic clock, in seconds, used as +DEFAULT-CLOCK+'s reading and
+by FD-READINESS's own deadline arithmetic. An exact rational, not a float, so
+that repeatedly subtracting an elapsed interval from a deadline across EINTR
+retries cannot accumulate rounding error."
   (/ (get-internal-real-time) internal-time-units-per-second))
 
 (defparameter +default-clock+

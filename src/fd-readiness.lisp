@@ -66,12 +66,6 @@ block become an immediate return, and spin.")
 number of seconds up to +MAXIMUM-FD-WAIT-SECONDS+."
   `(or null (real 0 ,+maximum-fd-wait-seconds+)))
 
-(defun %monotonic-seconds ()
-  "Current INTERNAL-REAL-TIME as an exact rational number of seconds. Rational
-rather than float so that repeatedly subtracting an elapsed interval from a
-deadline across EINTR retries cannot accumulate rounding error."
-  (/ (get-internal-real-time) internal-time-units-per-second))
-
 (defun %timeval-parts (seconds)
   "Split SECONDS into the (VALUES WHOLE-SECONDS MICROSECONDS) pair struct
 timeval holds. The total is rounded UP to the next microsecond: struct timeval
