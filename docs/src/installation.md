@@ -18,14 +18,15 @@ supported: the Nix flake, and a plain ASDF/local checkout.
     ```nix
     {
       inputs.cl-process-kit = {
-        url = "github:nerima-lisp/cl-process-kit/v3.1.0";
+        url = "github:nerima-lisp/cl-process-kit/v3.3.0";
         inputs.nixpkgs.follows = "nixpkgs";
       };
     }
     ```
 
     Pin a release tag rather than following the default branch, the same way
-    this project pins its own `cl-boundary-kit`/`cl-log-kit`/`cl-tty-kit`/
+    this project pins its own `cl-boundary-kit`/`cl-log-kit`/`cl-host-kit`/
+    `cl-date-kit`/`cl-concurrent-kit`/`cl-tty-kit`/`cl-codec-kit`/
     `cl-weave` inputs in `flake.nix` -- an unpinned `github:` reference tracks
     whatever is on `main`, which can change under a consumer without warning.
 
@@ -34,8 +35,10 @@ supported: the Nix flake, and a plain ASDF/local checkout.
     `cl-process-kit.devShells.<system>.default`. The optional native PTY
     backend is available as `cl-process-kit.packages.<system>.cl-process-kit-pty`.
 
-The flake pins its own `cl-boundary-kit`, `cl-log-kit`, `cl-tty-kit`, and
-`cl-weave` (test-only) dependency versions, so `nix flake check` /
+The flake pins its own `cl-boundary-kit`, `cl-log-kit`, `cl-date-kit`,
+`cl-concurrent-kit`, `cl-host-kit`, `cl-tty-kit`, `cl-codec-kit`, and
+`cl-weave` (test-only) dependency versions,
+so `nix flake check` /
 `nix build` are the most reproducible way to consume the library.
 
 ## ASDF / local checkout
@@ -46,9 +49,12 @@ git clone https://github.com/nerima-lisp/cl-process-kit.git
 
 Point `CL_SOURCE_REGISTRY` (or a file under
 `~/.config/common-lisp/source-registry.conf.d/`) at the checkout — and at
-your own [`cl-boundary-kit`](https://github.com/nerima-lisp/cl-boundary-kit)
-and [`cl-log-kit`](https://github.com/nerima-lisp/cl-log-kit) checkouts, its
-two required dependencies — then load it:
+your own [`cl-boundary-kit`](https://github.com/nerima-lisp/cl-boundary-kit),
+[`cl-log-kit`](https://github.com/nerima-lisp/cl-log-kit),
+[`cl-date-kit`](https://github.com/nerima-lisp/cl-date-kit),
+[`cl-concurrent-kit`](https://github.com/nerima-lisp/cl-concurrent-kit), and
+[`cl-codec-kit`](https://github.com/nerima-lisp/cl-codec-kit) checkouts, then
+load it:
 
 ```lisp
 (asdf:load-system "cl-process-kit")
@@ -58,7 +64,7 @@ two required dependencies — then load it:
 
     `cl-process-kit/pty` (package `process-kit/pty`) additionally depends on
     [`cl-tty-kit`](https://github.com/nerima-lisp/cl-tty-kit) and a compiled
-    native trampoline; see [PTY Backend](guide/pty.md) for the build step and
+    native PTY shared library; see [PTY Backend](guide/pty.md) for the build step and
     the `CL_PROCESS_KIT_PTY_LIBRARY` environment variable it requires.
 
 ## Verifying the install

@@ -6,7 +6,7 @@
     # release tests pass, so it is less likely to land a broken build.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # These five nerima-lisp packages are consumed as raw ASDF source trees
+    # These eight nerima-lisp packages are consumed as raw ASDF source trees
     # (cl-nix-forge `lispDerivation` `src`, or CL_SOURCE_REGISTRY at
     # runtime) -- this flake never touches any of their own
     # `packages`/`checks` outputs. `flake = false` fetches just the source
@@ -27,21 +27,21 @@
     # default branch, so an upstream push to main would break this repo's CI
     # without warning.
     cl-weave = {
-      url = "github:nerima-lisp/cl-weave/v1.1.4";
+      url = "github:nerima-lisp/cl-weave/v1.3.0";
       flake = false;
     };
     cl-boundary-kit = {
-      url = "github:nerima-lisp/cl-boundary-kit/v2.0.1";
+      url = "github:nerima-lisp/cl-boundary-kit/v2.3.0";
       flake = false;
     };
     cl-log-kit = {
-      url = "github:nerima-lisp/cl-log-kit/v2.0.1";
+      url = "github:nerima-lisp/cl-log-kit/v2.2.0";
       flake = false;
     };
     # None of the three is a dependency cl-process-kit names anywhere.
-    # cl-log-kit v2.0.1's own `:depends-on` is `((:version "cl-date-kit" "0.2.0")
-    # (:version "cl-concurrent-kit" "0.1.0") (:version "cl-host-kit" "0.2.0"))`,
-    # and `lispDerivation` resolves a system's graph only from the
+    # cl-log-kit's own `:depends-on` pulls in cl-date-kit,
+    # cl-concurrent-kit, and cl-host-kit, and `lispDerivation` resolves a
+    # system's graph only from the
     # `lispDependencies` it is handed, never from the .asd -- so the edges are
     # invisible until they are spelled out. They were: `nix flake check` failed
     # with `Component "cl-date-kit" not found, required by #<SYSTEM
@@ -49,15 +49,15 @@
     #
     # All three are `:depends-on ()` leaves, so none widens the graph further.
     cl-date-kit = {
-      url = "github:nerima-lisp/cl-date-kit/v0.3.0";
+      url = "github:nerima-lisp/cl-date-kit/v1.0.0";
       flake = false;
     };
     cl-concurrent-kit = {
-      url = "github:nerima-lisp/cl-concurrent-kit/v0.5.0";
+      url = "github:nerima-lisp/cl-concurrent-kit/v0.6.1";
       flake = false;
     };
     cl-host-kit = {
-      url = "github:nerima-lisp/cl-host-kit/v0.3.0";
+      url = "github:nerima-lisp/cl-host-kit/v0.3.1";
       flake = false;
     };
     cl-tty-kit = {
@@ -67,7 +67,7 @@
       # depends on, never :CL-TTY-KIT itself. This flake only ever builds the
       # base :cl-tty-kit system (see the `cl-process-kit/pty` .asd system), so
       # cl-prolog is not part of this dependency graph at all.
-      url = "github:nerima-lisp/cl-tty-kit/v1.2.0";
+      url = "github:nerima-lisp/cl-tty-kit/v1.5.0";
       flake = false;
     };
     # cl-process-kit.asd's REAL (non-test) dependency of both :cl-process-kit
@@ -75,7 +75,7 @@
     # src/pty.lisp, and src/copier.lisp delegate their UTF-8/octet handling to
     # it instead of calling SB-EXT:OCTETS-TO-STRING/STRING-TO-OCTETS directly.
     cl-codec-kit = {
-      url = "github:nerima-lisp/cl-codec-kit/v0.4.0";
+      url = "github:nerima-lisp/cl-codec-kit/v0.5.0";
       flake = false;
     };
 
@@ -245,14 +245,16 @@
           # work directly) -- passing the input straight through as `src`,
           # the same way `pkgs.sbcl.buildASDFSystem` accepted it before this
           # migration, sidesteps that entirely.
+          # cl-boundary-kit v2.3.0 depends only on cl-host-kit.
           clBoundaryKit = clForSystem.lispDerivation {
             lispSystem = "cl-boundary-kit";
             version = clBoundaryKitVersion;
             src = cl-boundary-kit;
-            lispDependencies = [ clLogKit ];
+            lispDependencies = [ clHostKit ];
           };
-          # cl-log-kit v2.0.1's three `:depends-on` edges, spelled out because
-          # `lispDerivation` reads the graph from here and not from the .asd.
+          # cl-log-kit v2.2.0 and cl-concurrent-kit v0.6.1 both gained
+          # additional upstream `:depends-on` edges; `lispDerivation` reads the
+          # graph from here and not from the .asd, so mirror them explicitly.
           clDateKit = clForSystem.lispDerivation {
             lispSystem = "cl-date-kit";
             version = clDateKitVersion;
@@ -262,6 +264,10 @@
             lispSystem = "cl-concurrent-kit";
             version = clConcurrentKitVersion;
             src = cl-concurrent-kit;
+            lispDependencies = [
+              clBoundaryKit
+              clDateKit
+            ];
           };
           clHostKit = clForSystem.lispDerivation {
             lispSystem = "cl-host-kit";
@@ -278,13 +284,16 @@
               clHostKit
             ];
           };
-          # cl-tty-kit v1.2.0's own `:depends-on ("cl-codec-kit")`, same
-          # invisible-edge problem as cl-log-kit's above.
+          # cl-tty-kit v1.5.0 now depends on both cl-codec-kit and
+          # cl-concurrent-kit, so mirror both sibling edges here.
           clTtyKit = clForSystem.lispDerivation {
             lispSystem = "cl-tty-kit";
             version = clTtyKitVersion;
             src = cl-tty-kit;
-            lispDependencies = [ clCodecKit ];
+            lispDependencies = [
+              clCodecKit
+              clConcurrentKit
+            ];
           };
           clCodecKit = clForSystem.lispDerivation {
             lispSystem = "cl-codec-kit";
@@ -349,6 +358,7 @@
               clBoundaryKit
               clLogKit
               clCodecKit
+              clConcurrentKit
             ];
             lispCheckDependencies = [ clWeave ];
             # perl/coreutils are check-only (t/native-spawn-test.sh's own
@@ -495,14 +505,12 @@
                 touch "$out"
               '';
 
-          # No src/ or t/ file has ever needed to exceed this: the largest
-          # today is communicate.lisp at 295 lines. 500 is cl-weave's own
-          # stated org guideline ("no source file exceeds 500 lines"),
-          # adopted verbatim rather than
-          # inventing a different number -- a file crossing it is exactly
-          # the moment `paredit refactor split-file`/`move-form` should
-          # split it, the way async-task.lisp and run-test.lisp already
-          # were in earlier passes.
+          # Source and test concerns are already separated into components;
+          # the largest current source file is async-task.lisp at 394 lines.
+          # 500 is cl-weave's own stated org guideline ("no source file
+          # exceeds 500 lines"), adopted verbatim rather than inventing a
+          # different number. A file approaching it is the point to use
+          # `paredit refactor split-file`/`move-form` to split responsibilities.
           maxFileLength = pkgs.runCommand "cl-process-kit-max-file-length" { } ''
             cd ${self}
             over=0
@@ -525,22 +533,27 @@
           # was never actually swept: 100 lines across 12 files exceeded it
           # until this pass fixed them by hand. Gated now so that gap cannot
           # reopen silently the way it did the first time.
-          maxLineLength = pkgs.runCommand "cl-process-kit-max-line-length" { } ''
-            cd ${self}
-            over=0
-            for f in $(find src t -name '*.lisp'); do
-              long=$(awk 'length > 100 { print FNR": "length }' "$f")
-              if [ -n "$long" ]; then
-                echo "$f has lines over 100 columns:" >&2
-                echo "$long" >&2
-                over=1
-              fi
-            done
-            if [ "$over" -ne 0 ]; then
-              exit 1
-            fi
-            touch "$out"
-          '';
+          maxLineLength =
+            pkgs.runCommand "cl-process-kit-max-line-length"
+              {
+                nativeBuildInputs = [ pkgs.perl ];
+              }
+              ''
+                cd ${self}
+                over=0
+                for f in $(find src t -name '*.lisp'); do
+                  long=$(perl -ne 'chomp; if (length > 100) { print "$.: " . length . "\n" }' "$f")
+                  if [ -n "$long" ]; then
+                    echo "$f has lines over 100 columns:" >&2
+                    echo "$long" >&2
+                    over=1
+                  fi
+                done
+                if [ "$over" -ne 0 ]; then
+                  exit 1
+                fi
+                touch "$out"
+              '';
 
           # Fails `nix flake check` when any tracked Nix file is unformatted,
           # turning the formatter into an enforced CI gate rather than a habit.
@@ -572,7 +585,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-codec-kit}//:${cl-weave}//:${self}//";
+          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-date-kit}//:${cl-concurrent-kit}//:${cl-host-kit}//:${cl-tty-kit}//:${cl-codec-kit}//:${cl-weave}//:${self}//";
           test = pkgs.writeShellApplication {
             name = "cl-process-kit-test";
             runtimeInputs = [
@@ -608,7 +621,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-tty-kit}//:${cl-codec-kit}//:${cl-weave}//:${self}//";
+          sourceRegistry = "${cl-boundary-kit}//:${cl-log-kit}//:${cl-date-kit}//:${cl-concurrent-kit}//:${cl-host-kit}//:${cl-tty-kit}//:${cl-codec-kit}//:${cl-weave}//:${self}//";
         in
         {
           default = pkgs.mkShell {

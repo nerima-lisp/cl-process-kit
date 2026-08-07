@@ -13,7 +13,12 @@
 (defun %bounded-ring-contents (ring start count)
   (loop for offset below count collect (aref ring (mod (+ start offset) (length ring)))))
 
-(defun %task-next-sequence (task) (incf (%process-task-next-sequence task)))
+(defun %task-next-sequence (task &optional event)
+  "Return TASK's next sequence, or commit EVENT's sequence after delivery."
+  (if event
+      (setf (%process-task-next-sequence task)
+            (process-event-sequence event))
+      (1+ (%process-task-next-sequence task))))
 
 (defun %task-record-and-callback (task event)
   (sb-thread:with-mutex ((%process-task-mutex task))
@@ -41,57 +46,106 @@
               (setf (%process-task-callback-error-history-start task) start
                     (%process-task-callback-error-history-count task) count))))))))
 
-(defun %flush-pending-drops-event (task)
-  "If TASK has any pending dropped-event count and its queue currently has
-room, push one :OVERFLOW PROCESS-EVENT summarizing them, reset the
-counter, and notify a waiter. A no-op otherwise. Call with TASK's
-queue-mutex already held. %TASK-SUBMIT-OUTPUT and %TASK-FINISH share this
-exact flush shape, differing only in whether they wait for room first."
-  (when (and (plusp (%process-task-pending-drops task))
-             (< (%process-task-queue-count task) (%process-task-capacity task)))
-    (push (%make-process-event :kind :overflow :sequence (%task-next-sequence task)
-                               :dropped-count (%process-task-pending-drops task))
-          (%process-task-queue task))
-    (incf (%process-task-queue-count task))
-    (setf (%process-task-pending-drops task) 0)
-    (sb-thread:condition-notify (%process-task-queue-ready task))))
+(defun %flush-pending-drops-event (task &key block (cancelable-p t))
+  "Try to publish TASK's pending overflow event.
+When BLOCK is true, wait for channel capacity, optionally waking on
+cancellation. Call with TASK's event lock already held."
+  (when (plusp (%process-task-pending-drops task))
+    (let ((event
+            (%make-process-event
+             :kind :overflow
+             :sequence (%task-next-sequence task)
+             :dropped-count (%process-task-pending-drops task))))
+      (flet ((send-event (event)
+               (handler-case
+                   (if block
+                       (if cancelable-p
+                           (cl-concurrent-kit:select
+                             ((cl-concurrent-kit:send
+                               (%process-task-event-channel task) event)
+                              ()
+                              t)
+                             ((cl-concurrent-kit:recv
+                               (%process-task-cancellation-channel task))
+                              ()
+                              nil))
+                           (progn
+                             (cl-concurrent-kit:send
+                              (%process-task-event-channel task) event)
+                             t))
+                       (cl-concurrent-kit:try-send
+                        (%process-task-event-channel task) event))
+                 (cl-concurrent-kit:channel-closed ()
+                   nil))))
+        (when (send-event event)
+          (%task-next-sequence task event)
+          (setf (%process-task-pending-drops task) 0)
+          t)))))
 
 (defun %task-submit-output (task kind octets)
-  (let ((token (%process-task-token task)))
-    (sb-thread:with-mutex ((%process-task-queue-mutex task))
-      (loop while (and (>= (%process-task-queue-count task) (%process-task-capacity task))
-                       (eq (%process-task-overflow-policy task) :block)
-                       (not (cancellation-requested-p token)))
-            do (sb-thread:condition-wait (%process-task-queue-space task)
-                                         (%process-task-queue-mutex task)))
-      (when (cancellation-requested-p token) (return-from %task-submit-output nil))
-      (%flush-pending-drops-event task)
-      (if (>= (%process-task-queue-count task) (%process-task-capacity task))
-          (progn
-            (incf (%process-task-pending-drops task))
-            (sb-thread:with-mutex ((%process-task-mutex task))
-              (incf (%process-task-dropped-event-count task)))
-            nil)
-          (progn
-            (push (%make-process-event :kind kind :sequence (%task-next-sequence task)
-                                       :octets (copy-seq octets))
-                  (%process-task-queue task))
-            (incf (%process-task-queue-count task))
-            (sb-thread:condition-notify (%process-task-queue-ready task))
-            t)))))
+  (let ((token (%process-task-token task))
+        (block (eq (%process-task-overflow-policy task) :block)))
+    (cl-concurrent-kit:with-lock-held
+        ((%process-task-queue-mutex task))
+      (when (cancellation-requested-p token)
+        (return-from %task-submit-output nil))
+      (when (and (plusp (%process-task-pending-drops task))
+                 (not (%flush-pending-drops-event
+                       task :block block :cancelable-p t)))
+        (when block
+          (return-from %task-submit-output nil)))
+      (let* ((event
+               (%make-process-event
+                :kind kind
+                :sequence (%task-next-sequence task)
+                :octets octets))
+             (sent-p
+               (handler-case
+                   (if block
+                       (cl-concurrent-kit:select
+                         ((cl-concurrent-kit:send
+                           (%process-task-event-channel task) event)
+                          ()
+                          t)
+                         ((cl-concurrent-kit:recv
+                           (%process-task-cancellation-channel task))
+                          ()
+                          nil))
+                       (cl-concurrent-kit:try-send
+                        (%process-task-event-channel task) event))
+                 (cl-concurrent-kit:channel-closed ()
+                   nil))))
+        (if sent-p
+            (progn
+              (%task-next-sequence task event)
+              t)
+            (if (or block (cancellation-requested-p token))
+                nil
+                (progn
+                  (incf (%process-task-pending-drops task))
+                  (sb-thread:with-mutex ((%process-task-mutex task))
+                    (incf (%process-task-dropped-event-count task)))
+                  nil)))))))
 
 (defun %task-finish (task result condition)
-  (sb-thread:with-mutex ((%process-task-queue-mutex task))
-    (loop while (and (plusp (%process-task-pending-drops task))
-                     (>= (%process-task-queue-count task) (%process-task-capacity task)))
-          do (sb-thread:condition-wait (%process-task-queue-space task)
-                                       (%process-task-queue-mutex task)))
-    (%flush-pending-drops-event task)
-    (setf (%process-task-terminal-event task)
-          (%make-process-event :kind :terminal :sequence (%task-next-sequence task)
-                               :result result :condition condition)
-          (%process-task-producer-finished-p task) t)
-    (sb-thread:condition-broadcast (%process-task-queue-ready task))))
+  (cl-concurrent-kit:with-lock-held
+      ((%process-task-queue-mutex task))
+    ;; Keep terminal delivery after all output and overflow events in FIFO order.
+    (%flush-pending-drops-event task :block t :cancelable-p nil)
+    (let ((terminal
+            (%make-process-event
+             :kind :terminal
+             :sequence (%task-next-sequence task)
+             :result result
+             :condition condition)))
+      (setf (%process-task-terminal-event task) terminal)
+      (cl-concurrent-kit:send (%process-task-event-channel task) terminal)
+      (%task-next-sequence task terminal)
+      (cl-concurrent-kit:close-channel
+       (%process-task-event-channel task))
+      (cl-concurrent-kit:close-channel
+       (%process-task-cancellation-channel task))
+      task)))
 
 (defparameter +task-terminal-state-rules+
   (list (cons #'process-event-condition :failed)
@@ -111,25 +165,16 @@ data, separately from the traversal that applies it.")
 
 (defun %task-dispatch (task)
   (loop
-    (let (event terminal)
-      (sb-thread:with-mutex ((%process-task-queue-mutex task))
-        (loop while (and (null (%process-task-queue task))
-                         (not (%process-task-producer-finished-p task)))
-              do (sb-thread:condition-wait (%process-task-queue-ready task)
-                                           (%process-task-queue-mutex task)))
-        (if (%process-task-queue task)
-            (progn
-              (setf event (car (last (%process-task-queue task)))
-                    (%process-task-queue task) (butlast (%process-task-queue task)))
-              (decf (%process-task-queue-count task))
-              (sb-thread:condition-broadcast (%process-task-queue-space task)))
-            (setf terminal (%process-task-terminal-event task))))
-      (when event (%task-record-and-callback task event))
-      (when terminal
-        (%task-record-and-callback task terminal)
+    (multiple-value-bind (event received-p)
+        (cl-concurrent-kit:recv (%process-task-event-channel task))
+      (unless received-p
+        (return))
+      (%task-record-and-callback task event)
+      (when (eq (process-event-kind event) :terminal)
         (sb-thread:with-mutex ((%process-task-mutex task))
-          (setf (%process-task-result task) (process-event-result terminal)
-                (%process-task-condition task) (process-event-condition terminal)
-                (%process-task-state task) (%classify-terminal-state terminal))
+          (setf (%process-task-result task) (process-event-result event)
+                (%process-task-condition task) (process-event-condition event)
+                (%process-task-state task)
+                (%classify-terminal-state event))
           (sb-thread:condition-broadcast (%process-task-waitqueue task)))
         (return)))))

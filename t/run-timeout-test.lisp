@@ -6,7 +6,6 @@
 ;;;; across five thematically distinct DESCRIBE blocks -- this is the
 ;;;; largest of the two halves by test count, and %MAKE-JUMP-CLOCK/
 ;;;; %COUNTING-SLEEPER are used only here.
-
 (in-package #:cl-process-kit/test)
 
 (defun %make-jump-clock ()
@@ -18,13 +17,30 @@ earlier or a later call -- so RUN never has to really wait out
 TIMEOUT-SECONDS or GRACE-PERIOD-SECONDS."
   (let ((calls 0))
     (cl-boundary-kit:make-clock
-     :monotonic-fn (lambda () (incf calls) (if (= calls 1) 0 (* calls 1000))))))
+     :monotonic-fn
+     (lambda ()
+       (incf calls)
+       (if (= calls 1) 0
+         (* calls 1000))))))
 
 (defun %counting-sleeper (counter)
   "A CL-BOUNDARY-KIT sleeper boundary that never really sleeps, incrementing
 the car of COUNTER on every SLEEPER-SLEEP call instead."
   (cl-boundary-kit:make-sleeper
-   :sleep-fn (lambda (seconds) (declare (ignore seconds)) (incf (car counter)) nil)))
+   :sleep-fn
+   (lambda (seconds)
+     (declare (ignore seconds))
+     (incf (car counter))
+     nil)))
+
+(defun %elapsed-seconds-since (started)
+  "Return the elapsed real time in seconds since STARTED."
+  (/ (- (get-internal-real-time) started) internal-time-units-per-second))
+
+(defun %run-shell/elapsed (command &rest options)
+  "Run shell COMMAND with OPTIONS and return RESULT plus elapsed real seconds."
+  (let ((started (get-internal-real-time)))
+    (values (apply #'run "/bin/sh" (list "-c" command) options) (%elapsed-seconds-since started))))
 
 (describe "run timeout and signal escalation"
   (it "run with on-timeout :return sets timed-out-p on a real timeout"
@@ -36,11 +52,20 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
   (it "run with on-timeout :error signals process-timeout-error with the right slots"
     (signals process-timeout-error
       (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :error))
-    (handler-case
-        (run "/bin/sh" (list "-c" "sleep 5") :timeout 0.2 :grace-period 0.1 :on-timeout :error)
-      (process-timeout-error (e)
-        (expect (string= (process-timeout-error-command e) "/bin/sh") :to-be-truthy)
-        (expect (= (process-timeout-error-timeout e) 0.2) :to-be-truthy))))
+    (handler-case (progn
+                (run
+                 "/bin/sh"
+                 (list "-c" "sleep 5")
+                 :timeout
+                 0.2
+                 :grace-period
+                 0.1
+                 :on-timeout
+                 :error)
+                (error "Expected PROCESS-TIMEOUT-ERROR."))
+  (process-timeout-error (e)
+    (expect (string= (process-timeout-error-command e) "/bin/sh") :to-be-truthy)
+    (expect (= (process-timeout-error-timeout e) 0.2) :to-be-truthy))))
 
   (it "run escalates to SIGKILL when the child ignores SIGTERM"
     (let ((result (run "/bin/sh" (list "-c" "trap '' TERM; sleep 5")
@@ -65,32 +90,41 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
       (expect (< elapsed-seconds 2) :to-be-truthy)))
 
   (it "run times out a stopped child instead of waiting forever"
-    (let* ((started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "kill -STOP $$")
-                       :timeout 0.1 :grace-period 0.1 :on-timeout :return))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+    (multiple-value-bind (result elapsed)
+        (%run-shell/elapsed "kill -STOP $$"
+                            :timeout 0.1 :grace-period 0.1 :on-timeout :return)
       (expect result :to-have-timed-out)
       (expect (< elapsed 2) :to-be-truthy)))
+  (it "run uses the default grace period when given NIL"
+    (let ((result (run "/bin/sh" (list "-c" "sleep 5")
+                       :timeout 1 :grace-period nil :on-timeout :return
+                       :clock (%make-jump-clock)
+                       :sleeper (%counting-sleeper (list 0)))))
+      (expect result :to-have-timed-out)))
 
   (it "run cleans up the child when CLOCK signals an error"
     (let ((started (get-internal-real-time)))
       (signals error
         (run "/bin/sh" (list "-c" "sleep 5") :timeout 1
              :clock (cl-boundary-kit:make-clock :monotonic-fn (lambda () (error "clock failed")))))
-      (expect (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 2)
+      (expect (< (%elapsed-seconds-since started) 2)
               :to-be-truthy)))
 
-  (it "run rejects invalid timeout controls before spawning"
-    (signals error (run (%true-program) nil :on-timeout :invalid))
-    (signals error (run (%true-program) nil :poll-interval 0))
-    (signals error (run (%true-program) nil :poll-interval -1))
-    (signals error (run (%true-program) nil :timeout -1))
-    (signals error (run (%true-program) nil :grace-period -1))
-    (signals error (run (%true-program) nil :drain-timeout-seconds -1))
-    (signals error (run (%true-program) nil :timeout-signal 0))
-    (signals error (run (%true-program) nil :timeout-signal 999))
-    (signals error (run (%true-program) nil :kill-signal 0))
-    (signals error (run (%true-program) nil :kill-signal 999)))
+  (cl-weave:it-each ((":on-timeout :invalid" (:on-timeout :invalid))
+                     (":poll-interval 0" (:poll-interval 0))
+                     (":poll-interval -1" (:poll-interval -1))
+                     (":timeout -1" (:timeout -1))
+                     (":grace-period -1" (:grace-period -1))
+                     (":drain-timeout-seconds -1" (:drain-timeout-seconds -1))
+                     (":timeout-signal 0" (:timeout-signal 0))
+                     (":timeout-signal 999" (:timeout-signal 999))
+                     (":kill-signal 0" (:kill-signal 0))
+                     (":kill-signal 999" (:kill-signal 999)))
+      "run rejects invalid timeout control ~A before spawning"
+      (label options)
+    (declare (ignore label))
+    (signals error
+      (apply #'run (%true-program) nil options)))
 
   ;; Every entry point resolves these two policies by comparing against :ERROR
   ;; and treating anything else as :RETURN, so an unguarded typo does not fail
@@ -99,26 +133,51 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
   ;; RUN, RUN-COMMAND and RUN-PIPELINE also hand COMMUNICATE a hardcoded
   ;; :ON-TIMEOUT :RETURN, so COMMUNICATE's own guard never sees the value the
   ;; caller passed and cannot catch this for them.
-  (it "every entry point rejects an unrecognised outcome policy rather than reading it as :return"
+  (cl-weave:it-each
+      (("run :on-cancel" run-invalid-on-cancel)
+       ("run-command :on-timeout" run-command-invalid-on-timeout)
+       ("run-command :on-cancel" run-command-invalid-on-cancel)
+       ("run-pipeline :on-timeout" run-pipeline-invalid-on-timeout)
+       ("run-pipeline :on-cancel" run-pipeline-invalid-on-cancel)
+       ("communicate :on-cancel" communicate-invalid-on-cancel))
+      "every entry point rejects the unrecognised outcome policy in ~A"
+      (label case-id)
+    (declare (ignore label))
     (let ((true-command (make-command (%true-program) nil)))
-      (signals error (run (%true-program) nil :on-cancel :invalid))
-      (signals error (run-command true-command :on-timeout :invalid))
-      (signals error (run-command true-command :on-cancel :invalid))
-      (signals error (run-pipeline (list true-command) :on-timeout :invalid))
-      (signals error (run-pipeline (list true-command) :on-cancel :invalid))
-      (with-process (process (spawn (%true-program) nil :output :stream :error :stream))
-        (signals error (communicate process :on-cancel :invalid)))))
+      (signals error
+        (ecase case-id
+          (run-invalid-on-cancel
+            (run (%true-program) nil :on-cancel :invalid))
+          (run-command-invalid-on-timeout
+            (run-command true-command :on-timeout :invalid))
+          (run-command-invalid-on-cancel
+            (run-command true-command :on-cancel :invalid))
+          (run-pipeline-invalid-on-timeout
+            (run-pipeline (list true-command) :on-timeout :invalid))
+          (run-pipeline-invalid-on-cancel
+            (run-pipeline (list true-command) :on-cancel :invalid))
+          (communicate-invalid-on-cancel
+            (with-process (process (spawn (%true-program) nil :output :stream :error :stream))
+              (communicate process :on-cancel :invalid)))))))
 
   (it "timeout errors retain a partial result without printing arguments"
-    (handler-case
-        (run "/bin/sh" (list "-c" "printf partial; sleep 5" "secret-argument")
-            :timeout 0.1 :grace-period 0.1 :on-timeout :error)
-      (process-timeout-error (condition)
-        (let ((result (process-timeout-error-result condition))
-              (report (princ-to-string condition)))
-          (expect (search "secret-argument" report) :to-be nil)
-          (expect result :to-have-timed-out)
-          (expect (string= (process-result-stdout result) "partial") :to-be-truthy)))))
+    (handler-case (progn
+                (run
+                 "/bin/sh"
+                 (list "-c" "printf partial; sleep 5" "secret-argument")
+                 :timeout
+                 0.1
+                 :grace-period
+                 0.1
+                 :on-timeout
+                 :error)
+                (error "Expected PROCESS-TIMEOUT-ERROR."))
+  (process-timeout-error (condition)
+    (let ((result (process-timeout-error-result condition))
+          (report (princ-to-string condition)))
+      (expect (search "secret-argument" report) :to-be nil)
+      (expect result :to-have-timed-out)
+      (expect (string= (process-result-stdout result) "partial") :to-be-truthy)))))
 
   ;; The copier read loop waits via poll(2) and checks %DRAIN-COPIERS' stop
   ;; flag between turns, so the drain deadline is enforced by the reader
@@ -128,21 +187,19 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
   ;; parked until the backgrounded descendant below finally released the pipe.
   ;; Nothing platform-specific is left to interrupt, so this runs everywhere.
   (it "run returns boundedly when an exited leader leaves a pipe-holding descendant"
-    (let* ((started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "sleep 5 & exit 0") :drain-timeout-seconds 0.1))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
+    (multiple-value-bind (result elapsed)
+        (%run-shell/elapsed "sleep 5 & exit 0" :drain-timeout-seconds 0.1)
       (expect (= (process-result-exit-code result) 0) :to-be-truthy)
       (expect (< elapsed 2) :to-be-truthy)))
 
-  (it "times out blocked large input and joins the stdin feeder"
-    (let* ((input (make-string (* 1024 1024) :initial-element #\x))
-           (started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
-                       :input input :timeout 0.1 :grace-period 0.1 :on-timeout :return))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (expect result :to-have-timed-out)
-      (expect (= (process-result-signal result) 9) :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy))))
+    (it "times out blocked large input and joins the stdin feeder"
+      (let ((input (make-string (* 1024 1024) :initial-element #\x)))
+        (multiple-value-bind (result elapsed)
+            (%run-shell/elapsed "trap \"\" TERM; sleep 5"
+                                :input input :timeout 0.1 :grace-period 0.1 :on-timeout :return)
+          (expect result :to-have-timed-out)
+          (expect (= (process-result-signal result) 9) :to-be-truthy)
+          (expect (< elapsed 2) :to-be-truthy)))))
 
 (describe "cancellation"
   (it "does not cancel an already cached process result"
@@ -156,18 +213,17 @@ the car of COUNTER on every SLEEPER-SLEEP call instead."
           (expect-not second :to-have-been-cancelled)
           (expect (cancellation-requested-p token) :to-be-truthy)))))
 
-  (it "cancels a pipe-holding descendant after its leader exits"
-    (let* ((token (make-cancellation-token))
-           (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
-                                             :name "process-kit cancellation test"))
-           (started (get-internal-real-time))
-           (result (run "/bin/sh" (list "-c" "(trap \"\" TERM; sleep 5) & printf leader")
-                        :cancellation-token token :grace-period 0.1d0 :on-cancel :return))
-           (elapsed (/ (- (get-internal-real-time) started) internal-time-units-per-second)))
-      (sb-thread:join-thread canceller)
-      (expect result :to-have-been-cancelled)
-      (expect (string= (process-result-stdout result) "leader") :to-be-truthy)
-      (expect (< elapsed 2) :to-be-truthy)))
+    (it "cancels a pipe-holding descendant after its leader exits"
+      (let* ((token (make-cancellation-token))
+             (canceller (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
+                                               :name "process-kit cancellation test")))
+        (multiple-value-bind (result elapsed)
+            (%run-shell/elapsed "(trap \"\" TERM; sleep 5) & printf leader"
+                                :cancellation-token token :grace-period 0.1d0 :on-cancel :return)
+          (sb-thread:join-thread canceller)
+          (expect result :to-have-been-cancelled)
+          (expect (string= (process-result-stdout result) "leader") :to-be-truthy)
+          (expect (< elapsed 2) :to-be-truthy))))
 
   (it "signals process-io-error when the cancellation watcher does not report joining in time"
     ;; Force JOIN-THREAD to report :TIMED-OUT for the watcher specifically

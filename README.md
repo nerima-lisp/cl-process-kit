@@ -14,7 +14,8 @@ multi-stage pipelines. Every child runs in its own process group, so a timeout
 reaches everything the child forked rather than just the child. It is built on
 the nerima-lisp [`cl-boundary-kit`](https://github.com/nerima-lisp/cl-boundary-kit)
 (clock/sleeper boundaries) and [`cl-log-kit`](https://github.com/nerima-lisp/cl-log-kit)
-(structured logging), and depends on nothing outside the org.
+(structured logging), and [`cl-codec-kit`](https://github.com/nerima-lisp/cl-codec-kit)
+(UTF-8/octet conversion); it depends on nothing outside the org.
 
 Full documentation is published at <https://nerima-lisp.github.io/cl-process-kit/>.
 The source for that site lives in [docs/src/](docs/src/).
@@ -25,12 +26,12 @@ The source for that site lives in [docs/src/](docs/src/).
 (asdf:load-system "cl-process-kit")
 
 ;; Capture a command's output.
-(process-kit:run "printf" (list "%s\n" "hello, world"))
+(process-kit:run "printf" (list "%s\n" "hello, world") :search t)
 ;; => a PROCESS-RESULT whose stdout is "hello, world\n"
 
 ;; A command that runs too long is escalated SIGTERM -> SIGKILL, then signals.
 (handler-case
-    (process-kit:run "sleep" (list "10") :timeout 1)
+    (process-kit:run "sleep" (list "10") :search t :timeout 1)
   (process-kit:process-timeout-error (e)
     (format t "timed out after ~a seconds~%"
             (process-kit:process-timeout-error-timeout e))))
@@ -42,7 +43,7 @@ The source for that site lives in [docs/src/](docs/src/).
 ```nix
 # flake.nix
 inputs.cl-process-kit = {
-  url = "github:nerima-lisp/cl-process-kit/v3.1.0";
+  url = "github:nerima-lisp/cl-process-kit/v3.3.0";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```

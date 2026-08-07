@@ -4,7 +4,8 @@
 ;;;; the test system, and run it. cl-weave itself must already be reachable
 ;;;; through CL_SOURCE_REGISTRY (the Nix flake's devShell/checks export this;
 ;;;; a manual invocation should too) -- this script does not guess at a
-;;;; sibling checkout path.
+;;;; sibling checkout path, but it does bootstrap native/spawn.c into tmp/
+;;;; when CL_PROCESS_KIT_SPAWN is unset.
 ;;;;
 ;;;; Set CL_PROCESS_KIT_COVERAGE=1 to additionally recompile src/ under
 ;;;; SB-COVER instrumentation and print an expression/branch coverage
@@ -27,15 +28,13 @@
 ;;;; these constants up (never down) whenever a change legitimately raises
 ;;;; coverage; a drop means a genuinely-reachable branch lost its test.
 ;;;;
-;;;; The floors are only enforced when the whole suite ran -- see
-;;;; CL-PROCESS-KIT/TEST:+SUITE-COMPLETE-P+. A platform that skips part of the
-;;;; suite produces a coverage figure that is not comparable to a floor set
-;;;; from a complete run, and holding it to that floor reports the skipped
-;;;; tests as a "regression".
+;;;; The floors are enforced on every supported platform. +SUITE-COMPLETE-P+
+;;;; remains diagnostic for platform comparisons, but skipped timing cases do
+;;;; not disable the ratchet: the executable code that ran remains subject to
+;;;; the same non-regression floor.
 ;;;;
 ;;;; Usage: sbcl --script run-tests.lisp
 ;;;;        CL_PROCESS_KIT_COVERAGE=1 sbcl --script run-tests.lisp
-
 (require :asdf)
 
 ;; 87.4 -> 87.5: the magic-number/type-duplication dedups two commits ago
@@ -68,8 +67,8 @@
 ;; 87.7 -> 87.9: a new CL-WEAVE:IT-FUZZ property (t/property-test.lisp)
 ;; exercises RUN's :REPLACE UTF-8 decoding path across 100 arbitrary-byte
 ;; trials instead of the 3 hand-picked sequences t/edge-coverage-test.lisp
-;; already had, raising this to 88.0% (4182/4754). Set to 87.9 for the usual
-;; raw (87.968%) vs. display headroom.
+;; already had, raising the measured result by 0.2 points. Set to 87.9 for
+;; the usual raw-vs-display headroom.
 (defparameter +minimum-expression-coverage+ 87.9
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
 
@@ -111,20 +110,68 @@
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 
 (defun script-directory ()
-  (make-pathname :name nil
-                 :type nil
-                 :defaults (or *load-truename*
-                               *compile-file-truename*
-                               (error "Unable to determine the script location"))))
+  (make-pathname
+   :name
+   nil
+   :type
+   nil
+   :defaults
+   (or *load-truename* *compile-file-truename* (error "Unable to determine the script location"))))
 
-(defun cl-weave-symbol (name) (find-symbol name "CL-WEAVE"))
-(defun sb-cover-symbol (name) (find-symbol name "SB-COVER"))
+(defun native-spawn-source-path (root)
+  (merge-pathnames "native/spawn.c" root))
+
+(defun native-spawn-build-path (root)
+  (merge-pathnames "tmp/cl-process-kit-spawn" root))
+
+(defun native-spawn-build-required-p (source output)
+  (let ((source-file (probe-file source))
+        (output-file (probe-file output)))
+    (and
+     source-file
+     (or
+      (null output-file)
+      (< (or (file-write-date output-file) 0) (or (file-write-date source-file) 0))))))
+
+(defun ensure-native-spawn-program (root)
+  (let ((existing (uiop:getenv "CL_PROCESS_KIT_SPAWN")))
+    (unless (and existing (plusp (length existing)))
+      (let* ((source (native-spawn-source-path root))
+             (output (native-spawn-build-path root)))
+        (when (native-spawn-build-required-p source output)
+          (ensure-directories-exist output)
+          (uiop:run-program
+           (list
+            "cc"
+            "-std=c11"
+            "-O2"
+            "-Wall"
+            "-Wextra"
+            "-Werror"
+            (namestring source)
+            "-o"
+            (namestring output))
+           :ignore-error-status
+           nil
+           :output
+           *standard-output*
+           :error-output
+           *error-output*))
+        (when (probe-file output)
+          (setf (uiop:getenv "CL_PROCESS_KIT_SPAWN") (namestring output)))))))
+
+(defun cl-weave-symbol (name)
+  (find-symbol name "CL-WEAVE"))
+
+(defun sb-cover-symbol (name)
+  (find-symbol name "SB-COVER"))
 
 (defun set-coverage-instrumentation (level)
   (proclaim (list 'optimize (list (sb-cover-symbol "STORE-COVERAGE-DATA") level))))
 
 (defun coverage-percentage (covered total)
-  (if (zerop total) 100.0 (* 100.0 (/ covered total))))
+  (if (zerop total) 100.0
+    (* 100.0 (/ covered total))))
 
 (defun suite-complete-p ()
   "Whether every test ran, per CL-PROCESS-KIT/TEST:+SUITE-COMPLETE-P+."
@@ -132,7 +179,12 @@
 
 (defun check-coverage-floor (kind actual minimum)
   (when (< actual minimum)
-    (format *error-output* "~&Coverage regression: ~A ~,1F% is below the ~,1F% floor.~%" kind actual minimum)
+    (format
+     *error-output*
+     "~&Coverage regression: ~A ~,1F% is below the ~,1F% floor.~%"
+     kind
+     actual
+     minimum)
     (uiop:quit 1)))
 
 (defun coverage-data-path (root)
@@ -141,29 +193,35 @@ CL_PROCESS_KIT_COVERAGE_DAT overrides that when ROOT isn't writable -- e.g.
 `nix flake check`'s checkout-tests derivation runs this script straight out
 of the read-only Nix store and must redirect it into its build sandbox."
   (let ((override (uiop:getenv "CL_PROCESS_KIT_COVERAGE_DAT")))
-    (if (and override (plusp (length override))) (pathname override) (merge-pathnames "coverage.dat" root))))
+    (if (and override (plusp (length override))) (pathname override)
+      (merge-pathnames "coverage.dat" root))))
 
 (defun print-coverage-report (root)
-  (let* ((statistics (funcall (cl-weave-symbol "COVERAGE-STATISTICS")
-                              :include-pathnames (list (merge-pathnames "src/" root))))
+  (let* ((statistics
+          (funcall
+           (cl-weave-symbol "COVERAGE-STATISTICS")
+           :include-pathnames
+           (list (merge-pathnames "src/" root))))
          (expression-covered (getf statistics :expression-covered))
          (expression-total (getf statistics :expression-total))
          (branch-covered (getf statistics :branch-covered))
          (branch-total (getf statistics :branch-total))
          (expression-percentage (coverage-percentage expression-covered expression-total))
          (branch-percentage (coverage-percentage branch-covered branch-total)))
-    (format t "~&~%Coverage (src/):~%  expression ~,1F% (~D/~D)~%  branch     ~,1F% (~D/~D)~%"
-            expression-percentage expression-covered expression-total
-            branch-percentage branch-covered branch-total)
+    (format
+     t
+     "~&~%Coverage (src/):~%  expression ~,1F% (~D/~D)~%  branch     ~,1F% (~D/~D)~%"
+     expression-percentage
+     expression-covered
+     expression-total
+     branch-percentage
+     branch-covered
+     branch-total)
     (funcall (cl-weave-symbol "SAVE-COVERAGE") (coverage-data-path root))
-    (cond
-      ((suite-complete-p)
-       (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
-       (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+))
-      (t
-       (format t "~&  ratchet not enforced: this platform skips part of the suite, so these~%")
-       (format t "  figures are not comparable to the ~,1F%/~,1F% floors.~%"
-               +minimum-expression-coverage+ +minimum-branch-coverage+)))))
+    (unless (suite-complete-p)
+      (format t "~&  note: timing cases skipped; coverage floors remain enforced.~%"))
+    (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
+    (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+)))
 
 (let* ((root (script-directory))
        (registry-entry (format nil "~A//" (namestring root)))
@@ -175,6 +233,7 @@ of the read-only Nix store and must redirect it into its build sandbox."
             (format nil "~A:~A" registry-entry existing)
             registry-entry))
   (asdf:initialize-source-registry)
+  (ensure-native-spawn-program root)
   (handler-case
       (progn
         (when track-coverage-p
@@ -192,7 +251,7 @@ of the read-only Nix store and must redirect it into its build sandbox."
     (asdf:missing-dependency (condition)
       (format *error-output*
               "~&Unable to load cl-process-kit/test: ~A~%~
-Point CL_SOURCE_REGISTRY at a cl-weave checkout (or run under `nix develop` / `nix flake check`, which do this for you) and retry.~%"
+Set CL_SOURCE_REGISTRY to cl-weave, or run under nix develop and retry.~%"
               condition)
       (uiop:quit 1)))
   (when track-coverage-p (funcall (cl-weave-symbol "RESET-COVERAGE")))

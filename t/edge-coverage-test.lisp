@@ -195,3 +195,151 @@
   (it "signals the live group leader directly"
     (with-process (process (%spawn-sleeping))
       (expect (process-send-leader-signal process 15) :to-be-truthy))))
+
+;;; --- async event channel edges -------------------------------------------
+
+(describe "async event channels"
+  (it
+   "delivers pending overflow before the next blocking output"
+   (let* ((task
+           (process-kit::%make-async-process-task
+            nil
+            (process-kit::%async-task-options
+             '(:event-queue-capacity 1 :event-overflow-policy :block))
+            (make-cancellation-token)))
+          (event-channel (process-kit::%process-task-event-channel task))
+          (cancellation-channel
+            (process-kit::%process-task-cancellation-channel task)))
+     (unwind-protect
+         (progn
+           (expect (process-kit::%task-submit-output task :stdout #(1))
+                   :to-be-truthy)
+           (setf (process-kit::%process-task-pending-drops task) 1)
+           (let ((promise
+                   (cl-concurrent-kit:submit
+                    process-kit::*process-kit-communicate-executor*
+                    (lambda ()
+                      (process-kit::%task-submit-output task :stdout #(2))))))
+             (multiple-value-bind (event received-p)
+                 (cl-concurrent-kit:recv event-channel)
+               (expect received-p :to-be-truthy)
+               (expect (equalp (process-event-octets event) #(1)) :to-be-truthy))
+             (multiple-value-bind (event received-p)
+                 (cl-concurrent-kit:recv event-channel)
+               (expect received-p :to-be-truthy)
+               (expect (eq (process-event-kind event) :overflow) :to-be-truthy)
+               (expect (= (process-event-dropped-count event) 1)
+                       :to-be-truthy))
+             (expect (cl-concurrent-kit:await promise) :to-be-truthy)
+             (multiple-value-bind (event received-p)
+                 (cl-concurrent-kit:recv event-channel)
+               (expect received-p :to-be-truthy)
+               (expect (equalp (process-event-octets event) #(2)) :to-be-truthy))
+             (expect (zerop (process-kit::%process-task-pending-drops task))
+                     :to-be-truthy)))
+       (cl-concurrent-kit:close-channel event-channel)
+       (cl-concurrent-kit:close-channel cancellation-channel))))
+
+  (it
+   "cancels while flushing pending overflow"
+   (let* ((task
+           (process-kit::%make-async-process-task
+            nil
+            (process-kit::%async-task-options
+             '(:event-queue-capacity 1 :event-overflow-policy :block))
+            (make-cancellation-token)))
+          (event-channel (process-kit::%process-task-event-channel task))
+          (cancellation-channel
+            (process-kit::%process-task-cancellation-channel task)))
+     (unwind-protect
+         (progn
+           (expect (process-kit::%task-submit-output task :stdout #(1))
+                   :to-be-truthy)
+           (setf (process-kit::%process-task-pending-drops task) 1)
+           (cl-concurrent-kit:close-channel cancellation-channel)
+           (let ((promise
+                   (cl-concurrent-kit:submit
+                    process-kit::*process-kit-communicate-executor*
+                    (lambda ()
+                      (process-kit::%task-submit-output task :stdout #(2))))))
+             (expect (cl-concurrent-kit:await promise) :to-be nil)
+             (expect (= (process-kit::%process-task-pending-drops task) 1)
+                     :to-be-truthy)
+             (multiple-value-bind (event received-p)
+                 (cl-concurrent-kit:recv event-channel)
+               (expect received-p :to-be-truthy)
+               (expect (equalp (process-event-octets event) #(1)) :to-be-truthy))))
+       (cl-concurrent-kit:close-channel event-channel)
+       (cl-concurrent-kit:close-channel cancellation-channel))))
+
+  (it
+   "rejects output after the event channel closes"
+   (let* ((task
+           (process-kit::%make-async-process-task
+            nil
+            (process-kit::%async-task-options
+             '(:event-queue-capacity 1 :event-overflow-policy :block))
+            (make-cancellation-token)))
+          (event-channel (process-kit::%process-task-event-channel task))
+          (cancellation-channel
+            (process-kit::%process-task-cancellation-channel task)))
+     (unwind-protect
+         (progn
+           (cl-concurrent-kit:close-channel event-channel)
+           (expect (process-kit::%task-submit-output task :stdout #(1))
+                   :to-be nil)
+           (expect (zerop (process-kit::%process-task-pending-drops task))
+                   :to-be-truthy))
+       (cl-concurrent-kit:close-channel event-channel)
+       (cl-concurrent-kit:close-channel cancellation-channel))))
+
+  (it
+   "flushes pending overflow without a cancellation select"
+   (let* ((task
+           (process-kit::%make-async-process-task
+            nil
+            (process-kit::%async-task-options
+             '(:event-queue-capacity 1 :event-overflow-policy :block))
+            (make-cancellation-token)))
+          (event-channel (process-kit::%process-task-event-channel task))
+          (cancellation-channel
+            (process-kit::%process-task-cancellation-channel task)))
+     (unwind-protect
+         (progn
+           (setf (process-kit::%process-task-pending-drops task) 2)
+           (expect (process-kit::%flush-pending-drops-event
+                    task
+                    :block t
+                    :cancelable-p nil)
+                   :to-be-truthy)
+           (multiple-value-bind (event received-p)
+               (cl-concurrent-kit:recv event-channel)
+             (expect received-p :to-be-truthy)
+             (expect (eq (process-event-kind event) :overflow)
+                     :to-be-truthy)
+             (expect (= (process-event-dropped-count event) 2)
+                     :to-be-truthy)))
+       (cl-concurrent-kit:close-channel event-channel)
+       (cl-concurrent-kit:close-channel cancellation-channel))))
+
+  (it
+   "keeps pending overflow when its event channel is closed"
+   (let* ((task
+           (process-kit::%make-async-process-task
+            nil
+            (process-kit::%async-task-options
+             '(:event-queue-capacity 1 :event-overflow-policy :block))
+            (make-cancellation-token)))
+          (event-channel (process-kit::%process-task-event-channel task))
+          (cancellation-channel
+            (process-kit::%process-task-cancellation-channel task)))
+     (unwind-protect
+         (progn
+           (setf (process-kit::%process-task-pending-drops task) 1)
+           (cl-concurrent-kit:close-channel event-channel)
+           (expect (process-kit::%flush-pending-drops-event task :block t)
+                   :to-be nil)
+           (expect (= (process-kit::%process-task-pending-drops task) 1)
+                   :to-be-truthy))
+       (cl-concurrent-kit:close-channel event-channel)
+       (cl-concurrent-kit:close-channel cancellation-channel)))))

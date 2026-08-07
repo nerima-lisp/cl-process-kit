@@ -57,6 +57,19 @@ of an already-open TARGET safe here."
       (%poke-fd write-fd)
       (expect (wait-for-input (list read-fd) :timeout 5) :to-equal (list read-fd))))
 
+  (it "waits indefinitely until a descriptor becomes readable when timeout is nil"
+    (%with-pipe (read-fd write-fd)
+      (let ((poker (sb-thread:make-thread (lambda () (sleep 0.05) (%poke-fd write-fd))
+                                          :name "cl-process-kit fd-readiness indefinite poker")))
+        (unwind-protect
+             (expect
+              (handler-case
+                  (sb-ext:with-timeout 5
+                    (wait-for-input (list read-fd) :timeout nil))
+                (sb-ext:timeout () :never-woken))
+              :to-equal (list read-fd))
+          (expect (sb-thread:join-thread poker :timeout 5 :default :poker-failed) :to-be 1)))))
+
   (it "returns the three ready sets in argument order"
     (%with-pipe (read-fd write-fd)
       (%poke-fd write-fd)

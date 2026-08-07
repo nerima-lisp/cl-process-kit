@@ -7,11 +7,12 @@ nix develop        # SBCL + a C compiler, CL_SOURCE_REGISTRY preconfigured
 nix flake check    # build the native trampoline, run the full test suite
 ```
 
-The Nix flake pins the tested `cl-weave`, `cl-boundary-kit`, and
-`cl-log-kit` versions and configures the Common Lisp source registry, so
-`nix flake check` is the preferred way to run the suite. Inside
-`nix develop`, `sbcl --script run-tests.lisp` is also available with the
-pinned dependencies.
+The Nix flake pins the tested `cl-weave`, `cl-boundary-kit`, `cl-log-kit`,
+`cl-date-kit`, `cl-concurrent-kit`, `cl-host-kit`, `cl-tty-kit`, and
+`cl-codec-kit` versions and configures the Common Lisp source registry, so
+`nix flake check` is the preferred way to run the suite. Inside `nix
+develop`, `sbcl --script run-tests.lisp` is also available with the pinned
+dependencies.
 
 `nix flake check` is the authoritative gate: it runs in the same sandboxed
 environment CI uses, and covers the test suite (`checks.default`), the PTY
@@ -70,14 +71,13 @@ dynamically computed value rather than asserting a fixed known state.
 
 ## Running the suite on both platforms
 
-The suite is 179 tests. All of them run on macOS; seven are `it-skip`ped on
-Linux under `#+linux`, each a case asserting that a process group is gone
-within a 0.1s grace period — timing a contended shared CI runner cannot
-reliably deliver. `t/package.lisp`'s `+suite-complete-p+` records that, and
-`run-tests.lisp` enforces its coverage ratchet only when it is true: a floor
-set from a complete run is not a bound on a partial one, and holding the
-Linux run to the macOS floor reported the skipped tests as a coverage
-regression on every CI build before 1.0.0.
+The suite currently reports 225 tests. All of them run on macOS; seven are
+`it-skip`ped on Linux under `#+linux`, each a case asserting that a process
+group is gone within a 0.1s grace period. Timing a contended shared CI runner
+cannot reliably deliver, so `t/package.lisp`'s `+suite-complete-p+` records
+the skips for diagnostics. `run-tests.lisp` nevertheless enforces its
+coverage floors on every supported platform for the executable code that ran;
+a timing skip is not a reason to disable the non-regression gate.
 
 Running on both platforms is worth the effort, because process semantics
 diverge exactly where this library works: signal delivery, process-group
@@ -133,12 +133,13 @@ It is off by default because instrumentation forces a full recompile and
 adds per-form bookkeeping overhead that a normal `nix flake check` / CI run
 shouldn't pay for.
 
-Expression/branch coverage of `src/` sits in the mid-80s/mid-70s percent.
-The untested remainder is essentially unreachable at runtime:
-macro-definition and `defstruct` bodies run at macroexpansion/compile time
-(so `conditions.lisp`, `logging.lisp`, and `types.lisp` read low even
-though the code they expand into is covered), and a handful of defensive
-arms only fire on OS syscall failures that a portable test cannot provoke.
+The current instrumented run reports 88.1% expression coverage and 82.6%
+branch coverage for `src/`. The `+minimum-expression-coverage+` and
+`+minimum-branch-coverage+` values in `run-tests.lisp` are non-regression
+floors and should only be raised. The remaining forms include compile-time
+macro and `defstruct` definitions, defensive OS syscall failures, and
+platform-specific cleanup branches; add focused seams or tests before
+raising the floors.
 
 ## Source layout
 

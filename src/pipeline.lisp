@@ -4,45 +4,67 @@
 ;;;; COMMUNICATE concurrently on its own thread (so a downstream stage can
 ;;;; start consuming before an upstream one finishes producing), and
 ;;;; aggregates the per-stage PROCESS-RESULTs into one PIPELINE-RESULT.
-
 (in-package #:process-kit)
 
 (defun %make-pipe-streams ()
   (multiple-value-bind (read-fd write-fd) (sb-posix:pipe)
-    (let ((read-stream nil) (write-stream nil) (completed-p nil))
-      (unwind-protect
-           (prog1
-               (cons
-                (setf read-stream
-                      (sb-sys:make-fd-stream read-fd :input t
-                                             :element-type '(unsigned-byte 8) :auto-close t))
-                (setf write-stream
-                      (sb-sys:make-fd-stream write-fd :output t
-                                             :element-type '(unsigned-byte 8) :auto-close t)))
-             (setf completed-p t))
+    (let ((read-stream nil)
+          (write-stream nil)
+          (completed-p nil))
+      (unwind-protect (prog1
+                        (cons
+                         (setf read-stream (sb-sys:make-fd-stream
+                                            read-fd
+                                            :input
+                                            t
+                                            :element-type
+                                            '(unsigned-byte 8)
+                                            :auto-close
+                                            t))
+                         (setf write-stream (sb-sys:make-fd-stream
+                                             write-fd
+                                             :output
+                                             t
+                                             :element-type
+                                             '(unsigned-byte 8)
+                                             :auto-close
+                                             t)))
+                        (setf completed-p t))
         (unless completed-p
           (if read-stream (ignore-errors (close read-stream :abort t))
-              (ignore-errors (sb-posix:close read-fd)))
+            (ignore-errors (sb-posix:close read-fd)))
           (if write-stream (ignore-errors (close write-stream :abort t))
-              (ignore-errors (sb-posix:close write-fd))))))))
+            (ignore-errors (sb-posix:close write-fd))))))))
 
 (defun %close-pipeline-streams (pipes)
   (dolist (pipe pipes)
     (ignore-errors (close (car pipe)))
     (ignore-errors (close (cdr pipe)))))
 
-(defun %terminate-processes (processes grace-period)
-  (labels ((clock () (/ (get-internal-real-time) internal-time-units-per-second))
-           (alive-p (process) (handler-case (%process-group-alive-p process) (error () nil))))
-    (dolist (process processes) (ignore-errors (process-terminate process)))
-    (%poll-until (lambda () (notany #'alive-p processes))
-                 (+ (clock) grace-period) +default-poll-interval+ #'clock #'sleep)
+(defun %terminate-processes (processes grace-period &key (close-streams-p t))
+  (labels ((clock ()
+             (/ (get-internal-real-time) internal-time-units-per-second))
+           (alive-p (process)
+             (handler-case (%process-group-alive-p process)
+               (error ()
+                 nil))))
     (dolist (process processes)
-      (when (alive-p process) (ignore-errors (process-kill process))))
+      (ignore-errors (process-terminate process)))
+    (%poll-until
+     (lambda ()
+       (notany #'alive-p processes))
+     (+ (clock) grace-period)
+     +default-poll-interval+
+     #'clock
+     #'sleep)
+    (dolist (process processes)
+      (when (alive-p process)
+        (ignore-errors (process-kill process))))
     (let ((reap-deadline (+ (clock) grace-period)))
       (dolist (process processes)
         (ignore-errors (process-wait process :timeout (max 0 (- reap-deadline (clock)))))
-        (ignore-errors (close-process-streams process))))))
+        (when close-streams-p
+          (ignore-errors (close-process-streams process)))))))
 
 (defun %spawn-pipeline-stages (commands pipes input grace-period)
   "Spawn each stage of COMMANDS wired stdout-to-stdin through PIPES --
@@ -50,13 +72,18 @@ INPUT feeds the first stage's stdin, and the last stage's stdout is left
 as a pipe for the caller to drain. Returns the spawned PROCESS-HANDLEs in
 stage order. On error partway through, terminates and reaps whatever had
 already spawned before re-signaling."
-  (let ((count (length commands)) (processes nil))
-    (handler-case
-        (loop for command in commands
-              for index from 0
-              for stdin = (if (zerop index) (if input :pipe nil) (car (nth (1- index) pipes)))
-              for stdout = (if (= index (1- count)) :pipe (cdr (nth index pipes)))
-              do (push (spawn-command command :stdin stdin :stdout stdout :stderr :pipe) processes))
+  (let ((count (length commands))
+        (processes nil))
+    (handler-case (loop for command in commands
+                        for index from 0
+                        for stdin = (if (zerop index) (if input :pipe
+                                                        nil)
+                                      (car (nth (1- index) pipes)))
+                        for stdout = (if (= index (1- count)) :pipe
+                                       (cdr (nth index pipes)))
+                        do (push
+                            (spawn-command command :stdin stdin :stdout stdout :stderr :pipe)
+                            processes))
       (error (condition)
         (%terminate-processes processes grace-period)
         (error condition)))
@@ -72,49 +99,98 @@ ON-TIMEOUT/ON-CANCEL is :ERROR; otherwise returns the PIPELINE-RESULT."
          (timed-out-p (not (null timed-out-stage-index)))
          (cancelled-p (not (null cancelled-stage-index)))
          (pipeline-result
-           (make-pipeline-result
-            :results result-list :stdout (process-result-stdout (car (last result-list)))
-            :stderr (mapcar #'process-result-stderr result-list)
-            :timed-out-p timed-out-p :cancelled-p cancelled-p
-            :duration-seconds (- (funcall clock) started))))
+          (make-pipeline-result
+           :results
+           result-list
+           :stdout
+           (process-result-stdout (car (last result-list)))
+           :stderr
+           (mapcar #'process-result-stderr result-list)
+           :timed-out-p
+           timed-out-p
+           :cancelled-p
+           cancelled-p
+           :duration-seconds
+           (- (funcall clock) started))))
     (cond
       ((and timed-out-p (eq on-timeout :error))
        (let* ((stage-index timed-out-stage-index)
               (stage-result (nth stage-index result-list))
               (stage-command (nth stage-index commands)))
-         (error 'process-timeout-error
-                :command (command-program stage-command)
-                :arguments (command-arguments stage-command)
-                :timeout timeout :result stage-result :stage-index stage-index
-                :pipeline-result pipeline-result)))
+         (error
+          'process-timeout-error
+          :command
+          (command-program stage-command)
+          :arguments
+          (command-arguments stage-command)
+          :timeout
+          timeout
+          :result
+          stage-result
+          :stage-index
+          stage-index
+          :pipeline-result
+          pipeline-result)))
       ((and cancelled-p (eq on-cancel :error))
        (let ((stage-index cancelled-stage-index))
-         (error 'process-cancelled-error
-                :result (nth stage-index result-list) :stage-index stage-index
-                :pipeline-result pipeline-result))))
+         (error
+          'process-cancelled-error
+          :result
+          (nth stage-index result-list)
+          :stage-index
+          stage-index
+          :pipeline-result
+          pipeline-result))))
     pipeline-result))
 
-(defun %communicate-pipeline-stage
-    (process input timeout grace-period cancellation-token max-output-characters command)
+(defun %remaining-pipeline-timeout (timeout started clock)
+  "Translate pipeline-scoped TIMEOUT into the remaining relative timeout
+for a stage that is about to call COMMUNICATE."
+  (and timeout (max 0 (- (+ started timeout) (funcall clock)))))
+
+(defun %communicate-pipeline-stage (process
+                                    input
+                                    timeout
+                                    started
+                                    clock
+                                    grace-period
+                                    cancellation-token
+                                    max-output-characters
+                                    command)
   "Run one pipeline stage's COMMUNICATE and classify the outcome as
 (VALUES RESULT NIL) on success or (VALUES NIL WORKER-ERROR) on failure. This
 is the per-stage logic on its own, separated from the mutex-guarded
 bookkeeping that RUN-PIPELINE's worker thread wraps around it."
-  (handler-case
-      (values (communicate process
-                           :input input :timeout timeout :grace-period grace-period
-                           :on-timeout :return :cancellation-token cancellation-token
-                           :on-cancel :return :max-output-characters max-output-characters
-                           :result-type (command-result-type command)
-                           :external-format (command-external-format command)
-                           :decoding-error-policy (command-decoding-error-policy command))
-              nil)
-    (condition (condition) (values nil condition))))
+  (handler-case (values
+                 (communicate
+                  process
+                  :input
+                  input
+                  :timeout
+                  (%remaining-pipeline-timeout timeout started clock)
+                  :grace-period
+                  grace-period
+                  :on-timeout
+                  :return
+                  :cancellation-token
+                  cancellation-token
+                  :on-cancel
+                  :return
+                  :max-output-characters
+                  max-output-characters
+                  :result-type
+                  (command-result-type command)
+                  :external-format
+                  (command-external-format command)
+                  :decoding-error-policy
+                  (command-decoding-error-policy command))
+                 nil)
+    (condition (condition)
+      (values nil condition))))
 
 ;;; Raised from inside AWAIT-PIPELINE-STAGES, nested deeply enough that the
 ;;; message cannot be written at its point of use and stay inside 100 columns.
-(defparameter +pipeline-join-failure-message+
-  "Pipeline worker thread did not terminate after process streams were closed.")
+(defparameter +pipeline-join-failure-message+ "Pipeline worker did not terminate.")
 
 (defun run-pipeline (commands &key input timeout
                                 (grace-period +default-grace-period-seconds+) cancellation-token
@@ -157,7 +233,7 @@ threads for AWAIT-PIPELINE-STAGES to join."
                             (multiple-value-bind (result worker-error)
                                 (%communicate-pipeline-stage
                                  stage-process (and (zerop stage-index) input)
-                                 timeout grace-period
+                                 timeout started #'clock grace-period
                                  cancellation-token max-output-characters stage-command)
                               (sb-thread:with-mutex (state-lock)
                                 (setf (aref results stage-index) result
@@ -167,8 +243,9 @@ threads for AWAIT-PIPELINE-STAGES to join."
                (await-pipeline-stages (threads)
                  "Poll until every stage thread has recorded a result or one
 signals a worker error, terminating the remaining stages on error; then
-join every thread (escalating to a forced stream close, then signaling
-PROCESS-IO-ERROR if a thread still won't join) before returning."
+join every thread, letting each worker's own COMMUNICATE cleanup retire
+copiers before closing descriptors; signal PROCESS-IO-ERROR if a thread
+still will not join after that cleanup window."
                  (let ((worker-error nil))
                    (loop
                      (sb-thread:with-mutex (state-lock)
@@ -178,20 +255,19 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                    (when worker-error
                      (%log :error "pipeline stage failed, terminating pipeline"
                            :condition worker-error)
-                     (%terminate-processes processes grace-period))
-                   (let ((join-deadline (+ (clock) grace-period +default-drain-timeout-seconds+))
-                         (cleanup-failure nil))
-                     (dolist (thread threads)
-                       (when (eq (sb-thread:join-thread thread
-                                                        :timeout (max 0 (- join-deadline (clock)))
-                                                        :default :timed-out)
-                                 :timed-out)
-                         (dolist (process processes)
-                           (ignore-errors (close-process-streams process)))
-                         (when (eq (sb-thread:join-thread thread :timeout +default-poll-interval+
-                                                          :default :timed-out)
-                                   :timed-out)
-                           (setf cleanup-failure t))))
+                     (%terminate-processes processes grace-period :close-streams-p nil))
+                    (let ((join-deadline (+ (clock) grace-period +default-drain-timeout-seconds+))
+                          (cleanup-failure nil))
+                      (dolist (thread threads)
+                        (when (eq (sb-thread:join-thread thread
+                                                         :timeout (max 0 (- join-deadline (clock)))
+                                                         :default :timed-out)
+                                  :timed-out)
+                          (when (eq (sb-thread:join-thread thread
+                                                           :timeout +default-drain-timeout-seconds+
+                                                           :default :timed-out)
+                                    :timed-out)
+                            (setf cleanup-failure t))))
                      (when cleanup-failure
                        (error 'process-io-error
                               :stream :cleanup
@@ -205,7 +281,11 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
                (loop repeat (1- count) do (push (%make-pipe-streams) pipes))
                (setf pipes (nreverse pipes))
                (setf processes (%spawn-pipeline-stages commands pipes input grace-period))
+               ;; After SPAWN-COMMAND duplicates the descriptors into each
+               ;; child, the parent's copies are redundant and must close so
+               ;; downstream stages can observe EOF promptly.
                (%close-pipeline-streams pipes)
+               (setf pipes nil)
                (await-pipeline-stages (spawn-stage-threads))
                (%build-pipeline-result (coerce results 'list) commands timeout
                                        on-timeout on-cancel started #'clock))
@@ -219,6 +299,12 @@ PROCESS-IO-ERROR if a thread still won't join) before returning."
          (results (pipeline-result-results result))
          (stage-index (position-if-not #'process-success-p results)))
     (when stage-index
-      (error 'pipeline-exit-error :result result :stage-index stage-index
-             :stage-result (nth stage-index results)))
+      (error
+       'pipeline-exit-error
+       :result
+       result
+       :stage-index
+       stage-index
+       :stage-result
+       (nth stage-index results)))
     result))

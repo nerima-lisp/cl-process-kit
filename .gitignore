@@ -53,3 +53,5 @@ coverage.dat
 
 # Serena's language-server cache. .serena/project.yml is intentionally tracked.
 .serena/cache/
+
+.worktrees/

@@ -33,13 +33,14 @@ and for how to run the Linux suite locally in a container.
 
 ## Stability
 
-From 1.0.0 onward the exported API follows semantic versioning. The exported
-surface is unchanged from 0.2.0; what 1.0.0 added was evidence about behaviour
-on the platforms above rather than new API.
+The current exported API is the supported API for this release line. The
+release does not ship aliases for older release lines. Symbols that are not
+exported from the `process-kit` package are internal and may change in any
+release, including the `%`-prefixed helpers that appear in backtraces.
 
-Symbols that are not exported from the `process-kit` package are internal and
-may change in any release, including the `%`-prefixed helpers that appear in
-backtraces.
+Consumers should depend on the current exported interface and pin a release
+when they need reproducible behavior; this page documents supported
+implementation and platform boundaries, not an older API promise.
 
 The optional `cl-process-kit/pty` system depends on `cl-tty-kit` and on a
 native shared library that is not built by default. It is versioned with the

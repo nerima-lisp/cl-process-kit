@@ -3,7 +3,7 @@
 `sb-ext:run-program :pty t` supplies a bidirectional PTY stream but does not
 establish a controlling terminal, which makes it insufficient for shell job
 control. The `cl-process-kit/pty` system (package `process-kit/pty`) adds a
-native trampoline that creates a session, acquires the slave as controlling
+native PTY backend that creates a session, acquires the slave as controlling
 terminal, sets the initial window size, and execs — giving `isatty` and
 foreground-process-group signaling their usual meaning inside the child.
 

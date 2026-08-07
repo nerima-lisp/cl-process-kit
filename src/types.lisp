@@ -60,18 +60,17 @@ is :GAP. Read with PROCESS-EVENT-STEP-EVENT, -CURSOR, -STATUS, and
             (:constructor %make-process-task)
             (:conc-name %process-task-)
             (:copier nil))
-  "COMMUNICATE-ASYNC's returned handle: a mutex-guarded PROCESS-EVENT queue
-plus dispatcher/worker thread bookkeeping. Inspect it with TASK-STATE,
-TASK-RESULT, TASK-CONDITION, PROCESS-EVENTS, NEXT-PROCESS-EVENT,
-CALLBACK-ERRORS, DROPPED-EVENT-COUNT, and the PROCESS-TASK-* history
-accessors; drive it with AWAIT-PROCESS and CANCEL-PROCESS."
+  "COMMUNICATE-ASYNC's returned handle: mutex-guarded task state plus a
+bounded PROCESS-EVENT channel and dispatcher/worker promise bookkeeping.
+Inspect it with TASK-STATE, TASK-RESULT, TASK-CONDITION, PROCESS-EVENTS,
+NEXT-PROCESS-EVENT, CALLBACK-ERRORS, DROPPED-EVENT-COUNT, and the
+PROCESS-TASK-* history accessors; drive it with AWAIT-PROCESS and
+CANCEL-PROCESS."
   process
   token
   (mutex (sb-thread:make-mutex :name "process-kit task state"))
   (waitqueue (sb-thread:make-waitqueue :name "process-kit task completion and events"))
-  (queue-mutex (sb-thread:make-mutex :name "process-kit task events"))
-  (queue-ready (sb-thread:make-waitqueue :name "process-kit event ready"))
-  (queue-space (sb-thread:make-waitqueue :name "process-kit event space"))
+  (queue-mutex (cl-concurrent-kit:make-lock :name "process-kit task events"))
   (capacity 64)
   (overflow-policy :drop-newest)
   callback
@@ -88,11 +87,10 @@ accessors; drive it with AWAIT-PROCESS and CANCEL-PROCESS."
   (callback-error-history-count 0)
   (dropped-event-count 0)
   (next-sequence 0)
-  (queue nil)
-  (queue-count 0)
   (pending-drops 0)
+  event-channel
+  cancellation-channel
   terminal-event
-  producer-finished-p
   worker
   dispatcher)
 

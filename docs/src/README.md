@@ -59,7 +59,7 @@ Node.js's `child_process.spawn()` give their own ecosystems.
 
     ---
 
-    The `posix_spawn`-based native trampoline for low-level process setup,
+    The native process-launch trampoline for low-level process setup,
     the optional native PTY backend for interactive/job-control programs,
     and structured `cl-log-kit` observability hooks.
 
@@ -112,7 +112,7 @@ been reimplemented ad hoc across several sister projects (`nshell`,
   group — see [Cancellation](guide/cancellation.md).
 - Multi-stage `run-pipeline`/`run-pipeline/checked` with per-stage results —
   see [Pipelines](guide/pipelines.md).
-- A `posix_spawn`-based native trampoline (`spawn-native`) for session/
+- A native C process-launch trampoline (`spawn-native`) for session/
   process-group/credential/resource-limit setup with typed launch-failure
   reporting — see [Native Spawn Trampoline](guide/native-spawn.md).
 - An optional native controlling-terminal PTY backend
@@ -129,8 +129,9 @@ The [flake.nix](https://github.com/nerima-lisp/cl-process-kit/blob/main/flake.ni
 at the repository root packages `cl-process-kit` as a Nix flake:
 
 - `nix develop` — a devShell with SBCL and a C compiler on `CL_SOURCE_REGISTRY`,
-  pinned to the tested `cl-weave`, `cl-boundary-kit`, `cl-log-kit`, and
-  `cl-tty-kit` versions.
+  pinned to the tested `cl-weave`, `cl-boundary-kit`, `cl-log-kit`,
+  `cl-date-kit`, `cl-concurrent-kit`, `cl-host-kit`, `cl-tty-kit`, and
+  `cl-codec-kit` versions.
 - `nix build` — the `cl-process-kit` ASDF-system package (`packages.default`)
   and the optional native `cl-process-kit-pty` shared library
   (`packages.cl-process-kit-pty`).

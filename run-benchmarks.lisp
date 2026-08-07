@@ -78,4 +78,30 @@
                 (process-kit:make-command "tr" (list "a-z" "A-Z") :search t)
                 (process-kit:make-command "tr" (list "A-Z" "a-z") :search t)))))
 
+(bench "async throughput: 4MiB stdout event dispatch" 10
+       (lambda ()
+         (process-kit:await-process
+          (process-kit:run-command-async
+           (process-kit:make-command "sh"
+                                     (list "-c" "yes x | head -c 4194304")
+                                     :search t)
+           :event-queue-capacity 1024
+           :event-history-capacity 0
+           :result-type :octets))))
+
+(bench "async concurrency: 8 simultaneous printf tasks" 20
+       (lambda ()
+         (let ((tasks
+                 (loop repeat 8
+                       collect
+                       (process-kit:run-command-async
+                        (process-kit:make-command "printf"
+                                                  (list "worker-output")
+                                                  :search t)
+                        :event-queue-capacity 8
+                        :event-history-capacity 0
+                        :result-type :octets))))
+           (dolist (task tasks)
+             (process-kit:await-process task)))))
+
 (uiop:quit 0)

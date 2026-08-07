@@ -6,7 +6,6 @@
 ;;;; cancellation-aware wrapper around %COMMUNICATE-BASE that races the
 ;;;; process against a caller-supplied CANCELLATION-TOKEN using a watcher
 ;;;; thread.
-
 (in-package #:process-kit)
 
 (defun %validate-outcome-policy (name policy)
@@ -26,66 +25,117 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
   (%ensure (member policy '(:return :error) :test #'eq) "~A must be :RETURN or :ERROR." name)
   policy)
 
-(defun %validate-communication-options
-    (input timeout grace-period poll-interval timeout-signal kill-signal on-timeout
-     max-output-characters drain-timeout-seconds result-type decoding-error-policy
-     clock sleeper)
+(defun %validate-communication-options (input
+                                        timeout
+                                        grace-period
+                                        poll-interval
+                                        timeout-signal
+                                        kill-signal
+                                        on-timeout
+                                        max-output-characters
+                                        drain-timeout-seconds
+                                        result-type
+                                        decoding-error-policy
+                                        clock
+                                        sleeper)
   (%ensure (not (eq input t)) "INPUT T cannot safely isolate the child process group.")
-  (dolist (entry `((,timeout . timeout)
-                    (,grace-period . grace-period)
-                    (,drain-timeout-seconds . drain-timeout-seconds)))
-    (%ensure (or (null (car entry)) (and (realp (car entry)) (not (minusp (car entry)))))
-             "~A must be NIL or a non-negative real." (cdr entry)))
-  (%ensure (and (realp poll-interval) (plusp poll-interval))
-           "POLL-INTERVAL must be a positive real.")
-  (%ensure (and (integerp timeout-signal) (<= 1 timeout-signal 31)
-                (integerp kill-signal) (<= 1 kill-signal 31))
-           "Signals must be integers between 1 and 31.")
+  (dolist (entry
+           `((,timeout . timeout)
+             (,grace-period . grace-period)
+             (,drain-timeout-seconds . drain-timeout-seconds)))
+    (%ensure
+     (or (null (car entry)) (and (realp (car entry)) (not (minusp (car entry)))))
+     "~A must be NIL or a non-negative real."
+     (cdr entry)))
+  (%ensure
+   (and (realp poll-interval) (plusp poll-interval))
+   "POLL-INTERVAL must be a positive real.")
+  (%ensure
+   (and
+    (integerp timeout-signal)
+    (<= 1 timeout-signal 31)
+    (integerp kill-signal)
+    (<= 1 kill-signal 31))
+   "Signals must be integers between 1 and 31.")
   (%validate-outcome-policy 'on-timeout on-timeout)
-  (%ensure (or (null max-output-characters)
-               (and (integerp max-output-characters) (not (minusp max-output-characters))))
-           "MAX-OUTPUT-CHARACTERS must be NIL or a non-negative integer.")
-  (%ensure (member result-type '(:string :octets) :test #'eq)
-           "RESULT-TYPE must be :STRING or :OCTETS.")
-  (%ensure (member decoding-error-policy '(:replace :error) :test #'eq)
-           "DECODING-ERROR-POLICY must be :REPLACE or :ERROR.")
-  (%ensure (%clock-p clock)
-           "CLOCK must be a CL-BOUNDARY-KIT clock boundary (see CL-BOUNDARY-KIT:MAKE-CLOCK).")
+  (%ensure
+   (or
+    (null max-output-characters)
+    (and (integerp max-output-characters) (not (minusp max-output-characters))))
+   "MAX-OUTPUT-CHARACTERS must be NIL or a non-negative integer.")
+  (%ensure
+   (member result-type '(:string :octets) :test #'eq)
+   "RESULT-TYPE must be :STRING or :OCTETS.")
+  (%ensure
+   (member decoding-error-policy '(:replace :error) :test #'eq)
+   "DECODING-ERROR-POLICY must be :REPLACE or :ERROR.")
+  (%ensure
+   (%clock-p clock)
+   "CLOCK must be a CL-BOUNDARY-KIT clock boundary (see CL-BOUNDARY-KIT:MAKE-CLOCK).")
   (%ensure
    (%sleeper-p sleeper)
    "SLEEPER must be a CL-BOUNDARY-KIT sleeper boundary (see CL-BOUNDARY-KIT:MAKE-SLEEPER)."))
 
 (defun %wait-until-terminal (process deadline poll clock-fn sleep-fn)
-  (%poll-until (lambda () (not (process-alive-p process))) deadline poll clock-fn sleep-fn))
+  (%poll-until
+   (lambda ()
+     (not (process-alive-p process)))
+   deadline
+   poll
+   clock-fn
+   sleep-fn))
 
 (defun %wait-until-group-gone (process deadline poll clock-fn sleep-fn)
-  (%poll-until (lambda () (process-try-wait process) (not (%process-group-alive-p process)))
-               deadline poll clock-fn sleep-fn))
+  (%poll-until
+   (lambda ()
+     (process-try-wait process)
+     (not (%process-group-alive-p process)))
+   deadline
+   poll
+   clock-fn
+   sleep-fn))
 
 (defun %raw-process-result (process stdout-capture stderr-capture timed-out-p started clock-fn)
   (let* ((raw (%handle-raw-process process))
          (status (sb-ext:process-status raw))
          (code (sb-ext:process-exit-code raw)))
     (make-process-result
-     :program nil :arguments nil :pid (process-id process) :status status
-     :duration-seconds (- (funcall clock-fn) started)
-     :exit-code (and (eq status :exited) code)
-     :signal (and (eq status :signaled) code)
-     :stdout (%capture-value stdout-capture :stdout)
-     :stderr (%capture-value stderr-capture :stderr)
-     :timed-out-p timed-out-p
-     :stdout-truncated-p (%capture-truncated-p stdout-capture)
-     :stderr-truncated-p (%capture-truncated-p stderr-capture))))
+     :program
+     nil
+     :arguments
+     nil
+     :pid
+     (process-id process)
+     :status
+     status
+     :duration-seconds
+     (- (funcall clock-fn) started)
+     :exit-code
+     (and (eq status :exited) code)
+     :signal
+     (and (eq status :signaled) code)
+     :stdout
+     (%capture-value stdout-capture :stdout)
+     :stderr
+     (%capture-value stderr-capture :stderr)
+     :timed-out-p
+     timed-out-p
+     :stdout-truncated-p
+     (%capture-truncated-p stdout-capture)
+     :stderr-truncated-p
+     (%capture-truncated-p stderr-capture))))
 
 (defun %communicate-base
     (process &key input timeout (grace-period +default-grace-period-seconds+)
                (timeout-signal +default-timeout-signal+) (kill-signal +default-kill-signal+)
-               (on-timeout :error) (max-output-characters +default-output-limit+)
+               (on-timeout :error) cancellation-token
+               (max-output-characters +default-output-limit+)
                (drain-timeout-seconds +default-drain-timeout-seconds+) (result-type :string)
                (external-format :default) (decoding-error-policy :replace)
                (clock +default-clock+) (sleeper +default-sleeper+)
                (poll-interval +default-poll-interval+))
   (declare (ignorable external-format))
+  (setf grace-period (or grace-period +default-grace-period-seconds+))
   (%validate-communication-options
    input timeout grace-period poll-interval timeout-signal kill-signal on-timeout
    max-output-characters drain-timeout-seconds result-type decoding-error-policy
@@ -94,6 +144,8 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
           (%begin-communication
            process :input input :timeout timeout :grace-period grace-period
                    :timeout-signal timeout-signal :kill-signal kill-signal :on-timeout on-timeout
+
+
                    :max-output-characters max-output-characters
                    :drain-timeout-seconds drain-timeout-seconds
                    :result-type result-type :external-format external-format
@@ -137,7 +189,8 @@ passed in rather than hard-coded here."
                  (ignore-errors (signal-group timeout-signal))
                  (escalate-unless-gone
                   (lambda ()
-                    (ignore-errors (%signal-process-group-after-leader-exit process kill-signal)))))
+                    (ignore-errors
+                    (%signal-process-group-after-leader-exit process kill-signal)))))
                (ignore-errors (process-wait process :timeout grace-period))))
       (unwind-protect
            (progn
@@ -152,10 +205,9 @@ passed in rather than hard-coded here."
              (when timed-out-p
                (ignore-errors (%close-stream-for-copier stdin-stream stdin-feeder)))
              (unless (process-handle-reaped-p process)
-               (sb-ext:process-wait (%handle-raw-process process)))
-             (when (and (boundp '*current-cancellation-token*)
-                        (symbol-value '*current-cancellation-token*)
-                        (cancellation-requested-p (symbol-value '*current-cancellation-token*)))
+               (process-wait process))
+             (when (and cancellation-token
+                         (cancellation-requested-p cancellation-token))
                (ignore-errors (%close-stream-for-copier stdin-stream stdin-feeder))
                (when stdin-feeder (setf (%copier-condition-after-forced-close-p stdin-feeder) t)))
              (%drain-copiers copier-entries drain-timeout-seconds clock-fn)
@@ -177,10 +229,6 @@ passed in rather than hard-coded here."
         (ignore-errors (%drain-copiers copier-entries drain-timeout-seconds clock-fn))
         (ignore-errors (close-process-streams process))))))
 
-(defvar *current-cancellation-token* nil)
-(defvar *current-on-cancel* :error)
-(defparameter *communicate-without-cancellation* #'%communicate-base)
-
 (defun %plist-without (plist keys)
   (loop for (key value) on plist by #'cddr
         unless (member key keys :test #'eq)
@@ -188,16 +236,15 @@ passed in rather than hard-coded here."
 
 (defun communicate (process &rest options)
   "Drain PROCESS's output, optionally feed :INPUT, and wait for it to exit.
-Races the process against :CANCELLATION-TOKEN (default: the token RUN or
-COMMUNICATE-ASYNC bound around this call, if any) using a watcher thread
+Races the process against a supplied :CANCELLATION-TOKEN using a watcher thread
 that escalates SIGTERM -> SIGKILL on cancellation, mirroring the timeout
 escalation %COMMUNICATE-BASE already performs."
-  (let* ((token (or (getf options :cancellation-token) *current-cancellation-token*))
-         (on-cancel (%validate-outcome-policy
-                     'on-cancel
-                     (if (member :on-cancel options :test #'eq)
-                         (getf options :on-cancel)
-                         *current-on-cancel*)))
+  (let* ((token (getf options :cancellation-token))
+         (on-cancel
+          (%validate-outcome-policy
+           'on-cancel
+           (if (member :on-cancel options :test #'eq) (getf options :on-cancel)
+             :error)))
          (grace-period (or (getf options :grace-period) +default-grace-period-seconds+))
          (state-lock (sb-thread:make-mutex :name "process-kit cancellation state"))
          (done-p nil)
@@ -205,27 +252,44 @@ escalation %COMMUNICATE-BASE already performs."
          (watcher-error nil)
          (terminal-at-entry-p (process-handle-reaped-p process))
          (watcher nil))
-    (flet ((clock () (cl-boundary-kit:clock-monotonic +default-clock+))
-           (sleep-seconds (seconds) (cl-boundary-kit:sleeper-sleep +default-sleeper+ seconds)))
-      (labels ((finished-p () (sb-thread:with-mutex (state-lock) done-p))
-               (mark-finished () (sb-thread:with-mutex (state-lock) (setf done-p t)))
-               (mark-cancelled () (sb-thread:with-mutex (state-lock) (setf cancelled-p t)))
-               (cancelled-p () (sb-thread:with-mutex (state-lock) cancelled-p))
+    (flet ((clock ()
+             (cl-boundary-kit:clock-monotonic +default-clock+))
+           (sleep-seconds (seconds)
+             (cl-boundary-kit:sleeper-sleep +default-sleeper+ seconds)))
+      (labels ((finished-p ()
+                 (sb-thread:with-mutex (state-lock) done-p))
+               (mark-finished ()
+                 (sb-thread:with-mutex
+                  (state-lock)
+                  (setf done-p t)))
+               (mark-cancelled ()
+                 (sb-thread:with-mutex
+                  (state-lock)
+                  (setf cancelled-p t)))
+               (cancelled-p ()
+                 (sb-thread:with-mutex (state-lock) cancelled-p))
                (record-watcher-error (condition)
-                 (sb-thread:with-mutex (state-lock) (setf watcher-error condition)))
-               (watcher-error () (sb-thread:with-mutex (state-lock) watcher-error))
+                 (sb-thread:with-mutex
+                  (state-lock)
+                  (setf watcher-error condition)))
+               (watcher-error ()
+                 (sb-thread:with-mutex (state-lock) watcher-error))
                (signal-owned-group (signal)
                  (%signal-process-group process signal :allow-terminal-leader t))
                (wait-for-group (seconds)
                  (%wait-until-group-gone
-                  process (+ (clock) (max seconds +default-poll-interval+))
-                  +default-poll-interval+ #'clock #'sleep-seconds))
+                  process
+                  (+ (clock) (max seconds +default-poll-interval+))
+                  +default-poll-interval+
+                  #'clock
+                  #'sleep-seconds))
                (escalate-unless-gone (seconds on-timeout)
                  "Wait up to SECONDS for PROCESS's owned group to exit; call
 the ON-TIMEOUT continuation only if it is still alive afterward. Expresses
 the watcher's SIGTERM -> SIGKILL -> give-up escalation as a chain of
 continuations instead of nested UNLESS forms."
-                 (unless (wait-for-group seconds) (funcall on-timeout)))
+                 (unless (wait-for-group seconds)
+                   (funcall on-timeout)))
                (run-cancellation-watcher ()
                  "The cancellation watcher thread's body: block until TOKEN is
 cancelled (or COMMUNICATE finishes first), then escalate SIGTERM -> SIGKILL
@@ -236,45 +300,66 @@ escalation, recording any signalling failure for the main thread to re-raise."
                  (when (and (not (finished-p)) (cancellation-requested-p token))
                    (mark-cancelled)
                    (%log :warn "process cancelled, escalating" :pid (process-id process))
-                   (handler-case
-                       (when (%process-group-alive-p process)
-                         (signal-owned-group 15)
-                         (escalate-unless-gone
-                          grace-period
-                          (lambda ()
-                            (signal-owned-group 9)
-                            (escalate-unless-gone
-                             grace-period
-                             (lambda ()
-                               (error "Owned process group remained alive after SIGKILL."))))))
+                   (handler-case (when (%process-group-alive-p process)
+                                   (signal-owned-group 15)
+                                   (escalate-unless-gone
+                                    grace-period
+                                    (lambda ()
+                                      (signal-owned-group 9)
+                                      (escalate-unless-gone
+                                       grace-period
+                                       (lambda ()
+                                         (error "Owned group survived SIGKILL."))))))
                      (error (condition)
                        (record-watcher-error
                         (make-condition 'process-io-error :stream :cleanup :cause condition)))))))
-        (setf watcher
-              (and token (not terminal-at-entry-p)
-                   (sb-thread:make-thread #'run-cancellation-watcher
-                                          :name "process-kit cancellation watcher")))
-        (unwind-protect
-             (let ((*current-cancellation-token* token))
-               (let ((result (apply *communicate-without-cancellation* process
-                                     (%plist-without options '(:cancellation-token :on-cancel)))))
-                 (when (and (not terminal-at-entry-p) token (cancellation-requested-p token))
-                   (mark-cancelled))
-                 (when (and (not terminal-at-entry-p) (cancelled-p))
-                   (setf (process-result-cancelled-p result) t))
-                 (when (and (not terminal-at-entry-p) (cancelled-p) (eq on-cancel :error))
-                   (error 'process-cancelled-error :result result))
-                 result))
+        (setf watcher (and
+                       token
+                       (not terminal-at-entry-p)
+                       (sb-thread:make-thread
+                        #'run-cancellation-watcher
+                        :name
+                        "process-kit cancellation watcher")))
+        (unwind-protect (let ((result
+                               (apply
+                                #'%communicate-base
+                                process
+                                :cancellation-token
+                                token
+                                :grace-period
+                                grace-period
+                                (%plist-without
+                                 options
+                                 '(:cancellation-token :on-cancel :grace-period)))))
+                          (when (and
+                                 (not terminal-at-entry-p)
+                                 token
+                                 (cancellation-requested-p token))
+                            (mark-cancelled))
+                          (when (and (not terminal-at-entry-p) (cancelled-p))
+                            (setf (process-result-cancelled-p result) t))
+                          (when (and (not terminal-at-entry-p) (cancelled-p) (eq on-cancel :error))
+                            (error 'process-cancelled-error :result result))
+                          result)
           (mark-finished)
           (when watcher
-            (when (eq (sb-thread:join-thread
-                       watcher :timeout (+ (* 2 grace-period) (* 3 +default-poll-interval+))
-                       :default :timed-out)
-                      :timed-out)
-              (error 'process-io-error
-                     :stream :cleanup
-                     :cause (make-condition
-                             'simple-error
-                             :format-control "Cancellation watcher did not terminate.")))
+            (when (eq
+                   (sb-thread:join-thread
+                    watcher
+                    :timeout
+                    (+ (* 2 grace-period) (* 3 +default-poll-interval+))
+                    :default
+                    :timed-out)
+                   :timed-out)
+              (error
+               'process-io-error
+               :stream
+               :cleanup
+               :cause
+               (make-condition
+                'simple-error
+                :format-control
+                "Cancellation watcher did not terminate.")))
             (let ((condition (watcher-error)))
-              (when condition (error condition)))))))))
+              (when condition
+                (error condition)))))))))

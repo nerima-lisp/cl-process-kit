@@ -16,11 +16,11 @@ across several sister projects into a single, reusable library."
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
-  :version "3.2.0"
+  :version "3.3.0"
   :homepage "https://github.com/nerima-lisp/cl-process-kit"
   :bug-tracker "https://github.com/nerima-lisp/cl-process-kit/issues"
   :source-control (:git "https://github.com/nerima-lisp/cl-process-kit.git")
-  :depends-on (:asdf :cl-boundary-kit :cl-log-kit :cl-codec-kit)
+  :depends-on (:asdf :cl-boundary-kit :cl-log-kit :cl-codec-kit :cl-concurrent-kit)
   :pathname "src"
   :serial t
   :components
@@ -47,7 +47,7 @@ across several sister projects into a single, reusable library."
 
 (asdf:defsystem "cl-process-kit/test"
   :description "Test system for cl-process-kit"
-  :version "3.2.0"
+  :version "3.3.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -69,7 +69,7 @@ across several sister projects into a single, reusable library."
 
 (asdf:defsystem "cl-process-kit/pty"
   :description "Optional native controlling-terminal PTY backend"
-  :version "3.2.0"
+  :version "3.3.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"
@@ -86,7 +86,7 @@ across several sister projects into a single, reusable library."
 
 (asdf:defsystem "cl-process-kit/pty-test"
   :description "Integration tests for the optional PTY backend"
-  :version "3.2.0"
+  :version "3.3.0"
   :author "takeokunn <bararararatty@gmail.com>"
   :maintainer "takeokunn <bararararatty@gmail.com>"
   :license "MIT"

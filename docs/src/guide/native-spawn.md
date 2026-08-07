@@ -4,8 +4,8 @@
 process-group isolation the rest of the library relies on but doesn't
 expose lower-level POSIX setup: dropping privileges, joining a new session,
 remapping arbitrary file descriptors, or setting resource limits before
-`exec`. `spawn-native` covers that gap through a small `posix_spawn`-based
-C trampoline (`native/spawn.c`, packaged as the `cl-process-kit-spawn`
+`exec`. `spawn-native` covers that gap through a small `fork`/`execve`-based C
+trampoline (`native/spawn.c`, packaged as the `cl-process-kit-spawn`
 binary) that performs the requested setup and then `exec`s the real
 program — with typed, synchronous failure reporting for every setup phase
 that can fail.

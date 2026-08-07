@@ -4,69 +4,77 @@
 ;;;; stdio policies, and output capture/encoding. Timeout/SIGTERM->SIGKILL
 ;;;; escalation and cancellation-token handling live in
 ;;;; run-timeout-test.lisp.
-
 (in-package #:cl-process-kit/test)
 
 (describe "run-command"
-  (it "run-command distinguishes an empty replacement environment"
-    ;; :environment-policy nil below deliberately gives the child (and thus
-    ;; :search's own PATH lookup) an empty environment, so the program must
-    ;; already be resolved to an absolute path via the real environment
-    ;; before the command is built, rather than via :search t.
-    (let* ((env-program (process-kit::%resolve-executable "env" nil (sb-ext:posix-environ) nil))
-           (result (run-command
-                    (make-command (namestring env-program) nil :environment-policy nil))))
-      (expect (string= (process-result-stdout result) "") :to-be-truthy)))
+          (it "run-command distinguishes an empty replacement environment"
+              ;; :environment-policy nil deliberately gives the child (and thus
+              ;; :search's own PATH lookup) an empty environment, so the program must
+              ;; already be resolved to an absolute path via the real environment
+              ;; before the command is built, rather than via :search t.
+              (let* ((env-program (process-kit::%resolve-executable "env" nil
+                                  (sb-ext:posix-environ) nil))
+                     (result (run-command
+                             (make-command (namestring env-program) nil :environment-policy nil))))
+                (expect (string= (process-result-stdout result) "") :to-be-truthy)))
 
-  (it "run-command applies environment updates and deletions"
-    (let* ((command (make-command "/bin/sh" (list "-c" "printf %s:${DROP+present} \"$KEEP\"")
-                                  :environment-policy (list "KEEP=old" "DROP=yes")
+          (it "run-command applies environment updates and deletions"
+              (let* ((command (make-command "/bin/sh"
+                                            (list "-c" "printf %s:${DROP+present} \"$KEEP\"")
+                                            :environment-policy (list "KEEP=old" "DROP=yes")
+
+
                                   :environment-update (list (cons "KEEP" "new") (cons "DROP" nil))))
-           (result (run-command command)))
-      (expect (string= (process-result-stdout result) "new:") :to-be-truthy)))
+                     (result (run-command command)))
+                (expect (string= (process-result-stdout result) "new:") :to-be-truthy)))
 
-  (it "run-command merges stderr into stdout"
-    (let ((result (run-command
-                   (make-command "/bin/sh" (list "-c" "printf out; printf err >&2")
-                                :stderr :stdout))))
-      (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
-      (expect (string= (process-result-stderr result) "") :to-be-truthy)))
+          (it "run-command merges stderr into stdout"
+              (let ((result (run-command
+                             (make-command "/bin/sh" (list "-c" "printf out; printf err >&2")
+                                           :stderr :stdout))))
+                (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
+                (expect (string= (process-result-stderr result) "") :to-be-truthy)))
 
-  (it "run-command cancels a blocked stdin write"
-    (let* ((token (make-cancellation-token))
-           (input (make-string (* 1024 1024) :initial-element (code-char 120))))
-      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
-                             :name "process-kit cancellation test")
-      (let ((result (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
-                                 :input input :cancellation-token token :grace-period 0.1d0
-                                 :on-cancel :return)))
-        (expect result :to-have-been-cancelled)
-        (expect (= (process-result-signal result) 9) :to-be-truthy)
-        (expect-not result :to-have-succeeded))))
+          (it "run-command cancels a blocked stdin write"
+              (let* ((token (make-cancellation-token))
+                     (input (make-string (* 1024 1024) :initial-element (code-char 120))))
+                (%schedule-cancellation token)
+                (let ((result (run-command (make-command "/bin/sh"
+                                          (list "-c" "trap \"\" TERM; sleep 5"))
+                                          :input input :cancellation-token token :grace-period 0.1d0
+                                           :on-cancel :return)))
+                  (expect result :to-have-been-cancelled)
+                  (expect (= (process-result-signal result) 9) :to-be-truthy)
+                  (expect-not result :to-have-succeeded))))
 
-  (it "run-command/checked returns a successful command result"
-    (let ((result (run-command/checked (make-command "/bin/sh" (list "-c" "printf ok")))))
-      (expect result :to-have-succeeded)
-      (expect (string= (process-result-stdout result) "ok") :to-be-truthy)))
+          (it "run-command/checked returns a successful command result"
+              (let ((result (run-command/checked (make-command "/bin/sh" (list "-c" "printf ok")))))
+                (expect result :to-have-succeeded)
+                (expect (string= (process-result-stdout result) "ok") :to-be-truthy)))
 
-  (it "run-command/checked signals process-exit-error"
-    (handler-case (run-command/checked (make-command "/bin/sh" (list "-c" "exit 6")))
-      (process-exit-error (condition)
-        (expect (= (process-result-exit-code (process-exit-error-result condition)) 6)
-                :to-be-truthy))))
+          (it "run-command/checked signals process-exit-error"
+              (let ((caught nil))
+                (handler-case
+                    (run-command/checked (make-command "/bin/sh" (list "-c" "exit 6")))
+                  (process-exit-error (condition)
+                                      (setf caught condition)))
+                (expect caught :to-be-truthy)
+                (expect (= (process-result-exit-code
+                            (process-exit-error-result caught))
+                           6)
+                        :to-be-truthy)))
 
-  (it "run-command signals process-timeout-error on its default :on-timeout :error"
-    (signals process-timeout-error
-      (run-command (make-command "/bin/sh" (list "-c" "sleep 5"))
-                   :timeout 0.2d0 :grace-period 0.1d0)))
+          (it "run-command signals process-timeout-error on its default :on-timeout :error"
+              (signals process-timeout-error
+                       (run-command (make-command "/bin/sh" (list "-c" "sleep 5"))
+                                    :timeout 0.2d0 :grace-period 0.1d0)))
 
-  (it "run-command signals process-cancelled-error on its default :on-cancel :error"
-    (let* ((token (make-cancellation-token)))
-      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
-                             :name "process-kit cancellation test")
-      (signals process-cancelled-error
-        (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
-                     :cancellation-token token :grace-period 0.1d0)))))
+          (it "run-command signals process-cancelled-error on its default :on-cancel :error"
+              (let* ((token (make-cancellation-token)))
+                (%schedule-cancellation token)
+                (signals process-cancelled-error
+                         (run-command (make-command "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5"))
+                                      :cancellation-token token :grace-period 0.1d0)))))
 
 (describe "run basics"
   (it "run captures stdout and a zero exit-code on success"
@@ -180,16 +188,19 @@
             :to-throw 'error))
 
   (it "run/checked signals a typed error retaining the result"
-    (handler-case (run/checked "/bin/sh" (list "-c" "printf failed >&2; exit 7"))
-      (process-exit-error (condition)
-        (let ((result (process-exit-error-result condition)))
-          (expect (= (process-result-exit-code result) 7) :to-be-truthy)
-          (expect (string= (process-result-stderr result) "failed") :to-be-truthy)))))
+    (let ((caught nil))
+      (handler-case
+          (run/checked "/bin/sh" (list "-c" "printf failed >&2; exit 7"))
+        (process-exit-error (condition)
+          (setf caught condition)))
+      (expect caught :to-be-truthy)
+      (let ((result (process-exit-error-result caught)))
+        (expect (= (process-result-exit-code result) 7) :to-be-truthy)
+        (expect (string= (process-result-stderr result) "failed") :to-be-truthy))))
 
   (it "run/checked signals process-cancelled-error on its default :on-cancel :error"
     (let* ((token (make-cancellation-token)))
-      (sb-thread:make-thread (lambda () (sleep 0.1d0) (cancel token))
-                             :name "process-kit cancellation test")
+      (%schedule-cancellation token)
       (signals process-cancelled-error
         (run/checked "/bin/sh" (list "-c" "trap \"\" TERM; sleep 5")
                      :cancellation-token token :grace-period 0.1d0)))))
@@ -266,4 +277,3 @@
     (let* ((input (string (code-char #xE9)))
            (result (run "cat" nil :input input :external-format :iso-8859-1 :search t)))
       (expect (string= (process-result-stdout result) input) :to-be-truthy))))
-
