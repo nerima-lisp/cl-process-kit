@@ -62,11 +62,11 @@
     };
     cl-tty-kit = {
       # Plain github: (not git+https with submodules=1): cl-tty-kit no longer
-      # vendors nerima-lisp/cl-prolog as a git submodule as of v1.0.0 -- it is
+      # vendors nerima-lisp/cl-prolog-kit as a git submodule as of v1.0.0 -- it is
       # now a regular top-level nerima-lisp package that only :CL-TTY-KIT/TEST
       # depends on, never :CL-TTY-KIT itself. This flake only ever builds the
       # base :cl-tty-kit system (see the `cl-process-kit/pty` .asd system), so
-      # cl-prolog is not part of this dependency graph at all.
+      # cl-prolog-kit is not part of this dependency graph at all.
       url = "github:nerima-lisp/cl-tty-kit/v1.5.0";
       flake = false;
     };
