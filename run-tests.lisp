@@ -28,10 +28,17 @@
 ;;;; these constants up (never down) whenever a change legitimately raises
 ;;;; coverage; a drop means a genuinely-reachable branch lost its test.
 ;;;;
-;;;; The floors are enforced on every supported platform. +SUITE-COMPLETE-P+
-;;;; remains diagnostic for platform comparisons, but skipped timing cases do
-;;;; not disable the ratchet: the executable code that ran remains subject to
-;;;; the same non-regression floor.
+;;;; The floors are only enforced when the whole suite ran -- see
+;;;; CL-PROCESS-KIT/TEST:+SUITE-COMPLETE-P+. A platform that skips part of the
+;;;; suite produces a coverage figure that is not comparable to a floor set
+;;;; from a complete run, and holding it to that floor reports the skipped
+;;;; tests as a "regression". This was briefly changed to unconditional
+;;;; enforcement (2026-08-07, "feat: modernize async process coordination"),
+;;;; on the assumption that the seven Linux-only skipped timing cases don't
+;;;; cover any SRC/ branch no other test reaches; CI falsified that
+;;;; assumption immediately (87.7% measured vs. the 87.9% floor calibrated
+;;;; against a complete run) and stayed red from that commit on, so the
+;;;; conditional is restored.
 ;;;;
 ;;;; Usage: sbcl --script run-tests.lisp
 ;;;;        CL_PROCESS_KIT_COVERAGE=1 sbcl --script run-tests.lisp
@@ -218,10 +225,19 @@ of the read-only Nix store and must redirect it into its build sandbox."
      branch-covered
      branch-total)
     (funcall (cl-weave-symbol "SAVE-COVERAGE") (coverage-data-path root))
-    (unless (suite-complete-p)
-      (format t "~&  note: timing cases skipped; coverage floors remain enforced.~%"))
-    (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
-    (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+)))
+    (cond
+      ((suite-complete-p)
+       (check-coverage-floor :expression expression-percentage +minimum-expression-coverage+)
+       (check-coverage-floor :branch branch-percentage +minimum-branch-coverage+))
+      (t
+       (format
+        t
+        "~&  ratchet not enforced: this platform skips part of the suite, so these~%")
+       (format
+        t
+        "  figures are not comparable to the ~,1F%/~,1F% floors.~%"
+        +minimum-expression-coverage+
+        +minimum-branch-coverage+)))))
 
 (let* ((root (script-directory))
        (registry-entry (format nil "~A//" (namestring root)))

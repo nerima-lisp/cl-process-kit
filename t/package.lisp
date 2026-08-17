@@ -33,9 +33,11 @@ period, which a contended shared CI runner cannot reliably deliver. They are
 skipped rather than given more headroom because a timing assertion loose
 enough to survive arbitrary contention no longer asserts the timing.
 
-Coverage floors are enforced on every supported platform; this flag reports
-test completeness for diagnostics and platform comparisons rather than
-disabling quality gates.")
+Coverage floors are enforced only when this flag is true: those seven cases
+exercise SRC/ branches nothing else does, so a Linux run that skips them is
+not comparable to the complete-suite run the floors were calibrated
+against, and holding it to that floor reports the skip itself as a
+regression.")
 
 (defun run-tests ()
   (unless (run-all :reporter :spec :pass-with-no-tests nil)
