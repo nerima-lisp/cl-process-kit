@@ -24,7 +24,7 @@ Running on both is worth the effort, because process semantics diverge exactly
 where this library works: signal delivery, process-group reaping, and whether
 closing a descriptor interrupts a thread already blocked reading it (macOS and
 the BSDs do; Linux does not). Two defects shipped in 0.2.0 were invisible on
-macOS and obvious on Linux — see 1.0.0's `### Correctness` notes in the
+macOS and reproducible on Linux — see 1.0.0's `### Correctness` notes in the
 [release notes](https://github.com/nerima-lisp/cl-process-kit/releases).
 
 Seven process-group tests are `it-skip`ped under `#+linux`; see

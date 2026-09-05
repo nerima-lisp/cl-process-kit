@@ -27,7 +27,7 @@ lingering wrapper process.
 `*native-spawn-program*` defaults to the `CL_PROCESS_KIT_SPAWN` environment
 variable, or `"cl-process-kit-spawn"` resolved via `PATH` if that variable
 is unset. The Nix package builds and installs this binary automatically
-(`$out/bin/cl-process-kit-spawn`); building it by hand is a plain C11
+(`$out/bin/cl-process-kit-spawn`); building it directly uses a plain C11
 compile:
 
 ```sh

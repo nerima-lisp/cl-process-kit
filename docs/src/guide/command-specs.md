@@ -78,7 +78,7 @@ rest arrives rather than misreading it as invalid -- for every supported
 [`process-io-error`](../reference/results-and-conditions.md#condition-hierarchy)
 the first time a malformed sequence is encountered. This option is shared
 by [`run`/`communicate`](execution.md#options-shared-across-the-family) —
-`make-command`'s `decoding-error-policy` is simply the `command-spec`-driven
+`make-command`'s `decoding-error-policy` is the `command-spec`-driven
 way to set the same behavior for `run-command`.
 
 ## Accessors
