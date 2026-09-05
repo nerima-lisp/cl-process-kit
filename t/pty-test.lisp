@@ -1,5 +1,3 @@
-;;;; t/pty-test.lisp
-
 (in-package #:cl-process-kit/pty-test)
 
 (defun %read-exactly (process count)

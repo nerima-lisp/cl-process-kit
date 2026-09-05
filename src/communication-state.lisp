@@ -1,11 +1,3 @@
-;;;; src/communication-state.lisp
-;;;;
-;;;; COMMUNICATE (src/communicate.lisp) may run at most once per
-;;;; PROCESS-HANDLE: a second concurrent call is rejected, and repeating it
-;;;; with the same options after completion replays the cached result. This
-;;;; file is the state machine and option-equality logic behind that
-;;;; contract: :IDLE -> :RESERVED -> :COMMUNICATING -> :COMMUNICATED.
-
 (in-package #:process-kit)
 
 (defvar *communication-reservation-owner* nil)
@@ -53,8 +45,8 @@ expands (BUILD-COMMUNICATION-CONTRACT INPUT TIMEOUT ...) into
 (%MAKE-COMMUNICATION-CONTRACT :INPUT INPUT :TIMEOUT TIMEOUT ...), so each of
 the contract's fourteen fields is named once per call site instead of
 twice. %BEGIN-COMMUNICATION and %ASYNC-CONTRACT both build the same
-contract shape from identically-named local variables; this macro is why
-neither has to spell out fourteen keyword/variable pairs by hand."
+contract shape from identically-named local variables, keeping the option
+lists synchronized."
   `(%make-communication-contract
     ,@(loop for key in keys append (list (intern (string key) :keyword) key))))
 

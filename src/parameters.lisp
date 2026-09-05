@@ -1,11 +1,3 @@
-;;;; src/parameters.lisp
-;;;;
-;;;; Tunable defaults shared by capture, communicate, and pipeline logic, plus
-;;;; the CL-BOUNDARY-KIT clock/sleeper boundary objects RUN, COMMUNICATE, and
-;;;; PROCESS-WAIT accept in place of raw clock/sleep functions -- a real
-;;;; clock/sleeper by default, swappable for a deterministic fake in tests.
-;;;; Kept as plain data, separate from the logic that consumes it.
-
 (in-package #:process-kit)
 
 (defparameter +default-poll-interval+ 0.01d0
@@ -57,11 +49,8 @@ alive GRACE-PERIOD after +DEFAULT-TIMEOUT-SIGNAL+. See +DEFAULT-TIMEOUT-SIGNAL+.
 
 (defparameter +default-copy-buffer-size+ 65536
   "Size, in octets/characters, of each COPIER/FEEDER read-write chunk. Larger
-than a single 4 KiB page: fewer, larger READ(2)/WRITE(2) calls per byte
-transferred, which SB-SPROF confirms dominates large-transfer wall time
-(measured well above the fork/thread-creation cost RUN otherwise pays per
-call). Still small enough that one chunk's ENCODING/EMIT work stays a bounded,
-short critical section.")
+than a single 4 KiB page to reduce READ(2)/WRITE(2) calls while keeping each
+chunk's ENCODING/EMIT work within a bounded critical section.")
 
 (defun %monotonic-seconds ()
   "The real monotonic clock, in seconds, used as +DEFAULT-CLOCK+'s reading and

@@ -1,9 +1,3 @@
-;;;; src/conditions.lisp
-;;;;
-;;;; The PROCESS-ERROR condition hierarchy. DEFINE-PROCESS-CONDITION factors
-;;;; out the initarg/reader/report boilerplate that CL's DEFINE-CONDITION
-;;;; requires to be spelled out per slot.
-
 (in-package #:process-kit)
 
 (defmacro %ensure (test datum &rest arguments)

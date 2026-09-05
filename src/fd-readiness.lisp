@@ -1,16 +1,3 @@
-;;;; src/fd-readiness.lisp
-;;;;
-;;;; Waiting until raw file descriptors become ready, via select(2).
-;;;;
-;;;; This is the one primitive an event loop cannot build out of the rest of
-;;;; this library: PROCESS-WAIT and COMMUNICATE each drive a single child, but
-;;;; a program that multiplexes several PTY masters, a unix socket and stdin in
-;;;; one thread needs to block on all of them at once and be told which woke
-;;;; it. SBCL ships that syscall as SB-UNIX:UNIX-FAST-SELECT, so this file is a
-;;;; contract and a retry loop over it -- no C, no foreign-function library,
-;;;; and no dependency on the optional native PTY shared object, which is why
-;;;; it lives here in the base system rather than beside src/pty.lisp.
-
 (in-package #:process-kit)
 
 (defconstant +fd-set-size+ sb-unix:fd-setsize
@@ -51,10 +38,8 @@ resumes against its own deadline.")
 about 3.17 years. Internal to the timeout contract, not a bound on it.
 
 Darwin's select(2) rejects a larger tv_sec outright with EINVAL rather than
-clamping it -- measured on this machine, where tv_sec 100000000 waits and
-100000001 fails immediately. Linux's select(2) saturates instead of failing and
-so takes far more, which makes 1e8 the value both kernels accept and the reason
-this is one plain constant rather than a read-time platform conditional.
+clamping it. Linux's select(2) saturates instead of failing, so 1e8 is the
+largest value accepted by both targets.
 
 The consequence of getting this wrong is not a slow wait but a hot one: a
 caller that maps FD-WAIT-FAILED back to \"nothing ready\" -- as an event loop

@@ -1,11 +1,3 @@
-;;;; t/run-timeout-test.lisp
-;;;;
-;;;; RUN's timeout/SIGTERM->SIGKILL escalation and cancellation-token
-;;;; handling, split out of run-test.lisp (which otherwise covers
-;;;; run-command/run's non-timeout behavior) once it grew past 380 lines
-;;;; across five thematically distinct DESCRIBE blocks -- this is the
-;;;; largest of the two halves by test count, and %MAKE-JUMP-CLOCK/
-;;;; %COUNTING-SLEEPER are used only here.
 (in-package #:cl-process-kit/test)
 
 (defun %make-jump-clock ()

@@ -1,9 +1,3 @@
-;;;; src/pipeline.lisp
-;;;;
-;;;; RUN-PIPELINE wires N COMMAND-SPECs stdout-to-stdin, runs each stage's
-;;;; COMMUNICATE concurrently on its own thread (so a downstream stage can
-;;;; start consuming before an upstream one finishes producing), and
-;;;; aggregates the per-stage PROCESS-RESULTs into one PIPELINE-RESULT.
 (in-package #:process-kit)
 
 (defun %make-pipe-streams ()
@@ -188,8 +182,6 @@ bookkeeping that RUN-PIPELINE's worker thread wraps around it."
     (condition (condition)
       (values nil condition))))
 
-;;; Raised from inside AWAIT-PIPELINE-STAGES, nested deeply enough that the
-;;; message cannot be written at its point of use and stay inside 100 columns.
 (defparameter +pipeline-join-failure-message+ "Pipeline worker did not terminate.")
 
 (defun run-pipeline (commands &key input timeout

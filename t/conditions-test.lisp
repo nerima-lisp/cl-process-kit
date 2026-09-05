@@ -1,12 +1,3 @@
-;;;; t/conditions-test.lisp
-;;;;
-;;;; Every PROCESS-ERROR subtype's :REPORT function is user-facing output --
-;;;; what a caller sees from (format nil "~A" condition) or an uncaught
-;;;; error. These tests construct each condition directly via MAKE-CONDITION
-;;;; and assert its report mentions the diagnostic details it promises,
-;;;; instead of only exercising the (harder to reach, and often
-;;;; timing-sensitive) real failure paths that signal them.
-
 (in-package #:cl-process-kit/test)
 
 (defun %sample-process-result (&key (status :exited) (exit-code 0) signal (program "prog"))

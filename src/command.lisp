@@ -1,10 +1,3 @@
-;;;; src/command.lisp
-;;;;
-;;;; Validation, defensive copying, and derived predicates for the data
-;;;; types declared in types.lisp: command-spec construction and its public
-;;;; accessors, cancellation-token operations, process-event accessors, and
-;;;; the process/pipeline success predicates.
-
 (in-package #:process-kit)
 
 (defun %proper-string-list-p (value)

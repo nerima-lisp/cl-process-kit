@@ -1,5 +1,3 @@
-;;;; t/process-handle-test.lisp
-
 (in-package #:cl-process-kit/test)
 
 (describe "process handle and command bookkeeping"

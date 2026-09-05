@@ -1,9 +1,3 @@
-;;;; src/run.lisp
-;;;;
-;;;; RUN is the high-level, synchronous entry point: spawn -> COMMUNICATE ->
-;;;; return a PROCESS-RESULT (or signal PROCESS-TIMEOUT-ERROR/PROCESS-CANCELLED-ERROR).
-;;;; RUN-COMMAND is its COMMAND-SPEC-driven counterpart, and RUN-COMMAND-ASYNC
-;;;; is the COMMAND-SPEC-driven counterpart of COMMUNICATE-ASYNC.
 (in-package #:process-kit)
 
 (defun %valid-run-output-policy-p (policy)

@@ -1,10 +1,3 @@
-;;;; src/types.lisp
-;;;;
-;;;; Pure data shapes shared across the library: process specifications,
-;;;; results, and the event/task records used by the asynchronous API.
-;;;; Every struct here is a plain data container -- validation, defensive
-;;;; copying, and derived predicates live in command.lisp, not here.
-
 (in-package #:process-kit)
 
 (defstruct (command-spec

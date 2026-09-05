@@ -17,102 +17,17 @@
 ;;;; instead of a literal SB-COVER:... token, which the reader would
 ;;;; otherwise have to resolve before that require ever runs.
 ;;;;
-;;;; Literal 100% coverage is not attainable here: SB-COVER only instruments
-;;;; RUNTIME execution, but DEFMACRO/DEFSTRUCT/DEFPARAMETER bodies run once
-;;;; at macro-expansion or load time -- exercising every call site of a
-;;;; macro still leaves its *definition* reading as "not executed". Since
-;;;; this library pushes validation and accessors through DEFMACRO
-;;;; wherever possible, the honest, sustainable form of "aim for 100%" is a
-;;;; ratchet: +MINIMUM-*-COVERAGE+ below fail the run if coverage regresses
-;;;; below the best level so far reached, so it only ever climbs. Bump
-;;;; these constants up (never down) whenever a change legitimately raises
-;;;; coverage; a drop means a genuinely-reachable branch lost its test.
-;;;;
-;;;; The floors are only enforced when the whole suite ran -- see
-;;;; CL-PROCESS-KIT/TEST:+SUITE-COMPLETE-P+. A platform that skips part of the
-;;;; suite produces a coverage figure that is not comparable to a floor set
-;;;; from a complete run, and holding it to that floor reports the skipped
-;;;; tests as a "regression". This was briefly changed to unconditional
-;;;; enforcement (2026-08-07, "feat: modernize async process coordination"),
-;;;; on the assumption that the seven Linux-only skipped timing cases don't
-;;;; cover any SRC/ branch no other test reaches; CI falsified that
-;;;; assumption immediately (87.7% measured vs. the 87.9% floor calibrated
-;;;; against a complete run) and stayed red from that commit on, so the
-;;;; conditional is restored.
+;;;; The coverage floors below are enforced only after the complete suite has
+;;;; run. Platforms that skip tests cannot produce a comparable coverage
+;;;; figure, so the suite-complete marker controls whether the floors apply.
 ;;;;
 ;;;; Usage: sbcl --script run-tests.lisp
 ;;;;        CL_PROCESS_KIT_COVERAGE=1 sbcl --script run-tests.lisp
 (require :asdf)
 
-;; 87.4 -> 87.5: the magic-number/type-duplication dedups two commits ago
-;; (+default-close-timeout-seconds+, terminal-dimension, etc.) removed
-;; enough duplicated code to raise this to 87.6% (4167/4759), confirmed by
-;; a fresh `nix flake check` run rather than trusting an earlier commit's
-;; recorded number. Set to 87.5, not 87.6, to leave real headroom below
-;; the RAW figure -- not just its rounded display -- per the lesson from
-;; this file's own earlier branch-floor display-vs-raw mismatch.
-;;
-;; 87.5 -> 87.4: NEXT-PROCESS-EVENT's 4-value return became a
-;; PROCESS-EVENT-STEP struct (src/types.lisp), fixing the exact bad-example
-;; API shape the org-wide API_STANDARD.md names this function by. The new
-;; DEFSTRUCT form is compile-time-only, same structural ceiling this file's
-;; own comments already document for conditions.lisp/logging.lisp/
-;; types.lisp -- raw is now 4168/4764 = 87.4895%, still fully tested at
-;; runtime (every STATUS arm has an existing test) but mechanically diluted
-;; by a form SB-COVER cannot mark covered. Branch coverage is UNCHANGED at
-;; 542/666 (removing the struct's initial per-slot :TYPE declarations, which
-;; briefly added 2 genuinely uncovered type-check branches, restored it to
-;; the exact prior figure) -- only the expression floor moves.
-;; 87.4 -> 87.7: extracting %TASK-SUBMIT-OUTPUT's and %TASK-FINISH's
-;; identical "flush pending-drops into an :OVERFLOW event" block
-;; (src/async-events.lisp) into a shared %FLUSH-PENDING-DROPS-EVENT, via
-;; `paredit refactor extract-function --at <offset> --infer-params`, raised
-;; this to 87.8% (4172/4754) -- fewer total points to begin with, same "less
-;; duplicated code, less to cover" effect as prior dedups. Set to 87.7, not
-;; 87.8, for the usual raw-vs-display headroom.
-;;
-;; 87.7 -> 87.9: a new CL-WEAVE:IT-FUZZ property (t/property-test.lisp)
-;; exercises RUN's :REPLACE UTF-8 decoding path across 100 arbitrary-byte
-;; trials instead of the 3 hand-picked sequences t/edge-coverage-test.lisp
-;; already had, raising the measured result by 0.2 points. Set to 87.9 for
-;; the usual raw-vs-display headroom.
 (defparameter +minimum-expression-coverage+ 87.9
   "Percentage floor for src/ expression coverage; see the coverage-ratchet note above.")
 
-;; 81.5 -> 81.4: unifying %WAIT-UNTIL-TERMINAL/%WAIT-UNTIL-GROUP-GONE/
-;; %TERMINATE-PROCESSES's three hand-written "poll until DONE or DEADLINE"
-;; loops into one shared %POLL-UNTIL (src/communicate.lisp, src/pipeline.lisp)
-;; removed 4 branch points that could only ever be redundant copies of each
-;; other, not 4 newly-uncovered ones: covered branches dropped from 548 to
-;; 544 and the total dropped from 672 to 668 by the exact same amount, so
-;; uncovered branches -- 124 -- did not change at all. A smaller, fully-
-;; deduplicated denominator producing a lower percentage against an unchanged
-;; numerator is the intended, harmless shape of a DRY-up, not "a genuinely-
-;; reachable branch lost its test" the note above warns about; confirmed by
-;; the arithmetic above before lowering this floor, not assumed from the
-;; refactor's intent alone.
-;;
-;; 81.4 -> 81.3: the same reasoning applied a second time in the same
-;; session, unifying AWAIT-PROCESS/NEXT-PROCESS-EVENT's (src/async-task.lisp)
-;; duplicated condition-wait-with-deadline blocks into %WAIT-ON-TASK. Covered
-;; dropped 544 -> 542 and total dropped 668 -> 666, so uncovered held at 124
-;; again. The literal figure this round is 542/666 = 81.38...%, which PRINTS
-;; as "81.4%" (the report's ~,1F rounds it) but is a hair below a floor
-;; written as exactly 81.4 -- set 81.3 with real headroom below the raw
-;; value, not just below its rounded display, so this exact display-vs-raw
-;; trap cannot silently fail the next dedup too.
-;; 81.3 -> 81.4: the same %FLUSH-PENDING-DROPS-EVENT extraction raised this
-;; to 81.5% (541/664) -- and this time uncovered branches genuinely dropped,
-;; 124 -> 123, not just a proportional denominator shrink: covered fell by
-;; only 1 (542 -> 541) while total fell by 2 (666 -> 664), so one of the two
-;; duplicate copies' branch arms was better-exercised than the other and the
-;; merge inherited the more-covered version. Set to 81.4 for the usual raw
-;; (541/664 = 81.4759%) vs. display headroom.
-;;
-;; 81.4 -> 82.1: the same new IT-FUZZ property above also drives more of
-;; %UTF8-COMPLETE-PREFIX-END's branch arms across its 100 random trials,
-;; raising this to 82.2% (546/664). Set to 82.1 for the usual raw
-;; (82.2289%) vs. display headroom.
 (defparameter +minimum-branch-coverage+ 82.1
   "Percentage floor for src/ branch coverage; see the coverage-ratchet note above.")
 

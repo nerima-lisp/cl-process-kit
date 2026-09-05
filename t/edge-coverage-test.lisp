@@ -1,21 +1,4 @@
-;;;; t/edge-coverage-test.lisp
-;;;;
-;;;; Branch-level edge cases the behavior-focused suites skip: feeding a child
-;;;; from a live stream object (both binary and character), the timeout-expiry
-;;;; and "wrong terminal kind" return paths of the PROCESS-HANDLE queries, and
-;;;; -- via CL-WEAVE:WITH-MOCKED-FUNCTIONS fault injection -- the copier
-;;;; thread's error-capture path. These are the reachable arms of COPIER and
-;;;; PROCESS-HANDLE that string/octet inputs and blocking waits never take.
-
 (in-package #:cl-process-kit/test)
-
-;;; --- stream-valued :input -------------------------------------------------
-;;;
-;;; RUN accepts a string or an octet vector directly; it also accepts an open
-;;; STREAM, which %WRITE-PROCESS-INPUT drains through a distinct binary- vs
-;;; character-stream arm. WITH-STREAMED-INPUT abstracts "materialize DATA as a
-;;; stream of ELEMENT-TYPE, feed it to cat, and hand back the round-tripped
-;;; output" so each example asserts only the round trip.
 
 (defun call-with-streamed-input (element-type writer result-type continuation)
   (uiop:with-temporary-file (:pathname path :type "in")
@@ -40,18 +23,12 @@
          (expect result :to-have-succeeded)
          (expect (coerce (process-result-stdout result) 'list) :to-equal (coerce bytes 'list)))))))
 
-;;; --- PROCESS-HANDLE query edge arms --------------------------------------
-
 (describe "process-handle query edge arms"
   (it "process-wait returns NIL once its own timeout expires on a live child"
     (with-process (process (%spawn-sleeping))
       (expect (process-wait process :timeout 0.05d0) :to-be-null)))
 
   (it "process-signal is NIL for a normally exited child, process-exit-code NIL for a signaled one"
-    ;; Two independent scenarios, four independent checks -- WITH-SOFT-
-    ;; ASSERTIONS runs every one and reports all failures together, so a
-    ;; regression in (say) just the SIGKILL scenario isn't hidden behind an
-    ;; abort on the clean-exit scenario's first failing check.
     (cl-weave:with-soft-assertions
       ;; A clean exit: exit-code is present, signal is absent.
       (with-process (exited (spawn "/bin/sh" (list "-c" "exit 0")))
@@ -64,13 +41,6 @@
         (process-wait killed)
         (expect (process-signal killed) :to-equal 9)
         (expect (process-exit-code killed) :to-be-null)))))
-
-;;; --- UTF-8 decoding edge arms --------------------------------------------
-;;;
-;;; %UTF8-COMPLETE-PREFIX-END validates each multibyte lead byte's range
-;;; (rejecting overlong forms and UTF-16 surrogates) before decoding. Feeding
-;;; the child raw, structurally-invalid sequences drives those rejection arms;
-;;; with :REPLACE they surface as replacement characters, never a decode error.
 
 (defun run-raw-bytes (octal-escapes)
   "Run a shell that prints OCTAL-ESCAPES verbatim and capture it as a
@@ -93,20 +63,6 @@
     (let ((result (run-raw-bytes "\\364\\220\\200\\200"))) ; F4 90 80 80 -> > U+10FFFF
       (expect result :to-have-succeeded)
       (expect (find #\Replacement_Character (process-result-stdout result)) :to-be-truthy))))
-
-;;; --- copier fault injection ----------------------------------------------
-;;;
-;;; A copier thread that dies mid-drain must surface its failure as a
-;;; PROCESS-IO-ERROR when the streams are drained, not swallow it. The failure
-;;; is normally an OS-level read fault; WITH-MOCKED-FUNCTIONS injects it
-;;; deterministically by making the capture-append step throw.
-
-;;; --- communicate's at-most-once contract ---------------------------------
-;;;
-;;; COMMUNICATE reserves a handle and either replays its cached result for an
-;;; identical option set or signals COMMUNICATE-OPTIONS-MISMATCH. Option
-;;; equality compares octet-vector inputs by contents, not identity -- these
-;;; drive the reserved-state contract-comparison arms of communication-state.
 
 (describe "communicate at-most-once contract"
   (it "replays the cached result for identical options and rejects a mismatch"
@@ -132,14 +88,6 @@
       (signals communicate-options-mismatch
         (communicate process :input (sb-ext:string-to-octets "xyz" :external-format :utf-8)
                              :result-type :octets)))))
-
-;;; --- communication reservation state machine ------------------------------
-;;;
-;;; %RESERVE-COMMUNICATION/%BEGIN-COMMUNICATION are the internal state machine
-;;; behind COMMUNICATE's at-most-once contract; driving them directly (rather
-;;; than racing threads against COMMUNICATE-ASYNC's real reservation window)
-;;; deterministically exercises the "someone else is already communicating"
-;;; arms that public callers only ever hit under a timing race.
 
 (describe "communication reservation state machine"
   (it "rejects begin-communication while communication is already in progress"
@@ -180,8 +128,6 @@
       (signals process-io-error
         (run "/bin/sh" (list "-c" "printf payload"))))))
 
-;;; --- process-group signaling edges ---------------------------------------
-
 (describe "process-group signaling"
   (it "rejects an out-of-range signal number"
     (with-process (process (%spawn-sleeping))
@@ -195,8 +141,6 @@
   (it "signals the live group leader directly"
     (with-process (process (%spawn-sleeping))
       (expect (process-send-leader-signal process 15) :to-be-truthy))))
-
-;;; --- async event channel edges -------------------------------------------
 
 (describe "async event channels"
   (it

@@ -1,4 +1,3 @@
-;;;; t/async-task-test.lisp
 (in-package #:cl-process-kit/test)
 
 (defun %closed-stream-p (stream)

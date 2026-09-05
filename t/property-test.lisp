@@ -1,21 +1,3 @@
-;;;; t/property-test.lisp
-;;;;
-;;;; Value-space invariants driven by CL-WEAVE:IT-PROPERTY generators, rather
-;;;; than hand-picked examples. Each property states a law that must hold for
-;;;; every generated input -- an octet round trip through cat, argument
-;;;; preservation, the NUL-rejection guard, the success predicate -- and
-;;;; cl-weave shrinks any counterexample to a minimal failing case. This is
-;;;; the highest-abstraction layer of the suite: laws, not cases.
-;;;;
-;;;; CL-WEAVE:IT-FUZZ below states a weaker but broader claim than
-;;;; IT-PROPERTY: not "the result equals X" but "this never signals an ERROR"
-;;;; -- the right shape for :REPLACE decoding, whose whole contract is that no
-;;;; input, however malformed, ever reaches the caller as a condition.
-;;;; t/edge-coverage-test.lisp's "UTF-8 decoding edge arms" hand-picks three
-;;;; known-malformed byte sequences (a surrogate, an overlong encoding, an
-;;;; out-of-range lead byte); this generalizes that same claim across the
-;;;; full byte space instead of only the cases someone thought to name.
-
 (in-package #:cl-process-kit/test)
 
 (defun no-nul-p (string) (not (find (code-char 0) string)))

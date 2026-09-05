@@ -1,11 +1,3 @@
-;;;; src/process-group.lisp
-;;;;
-;;;; Signaling and lifecycle control for the POSIX process group each
-;;;; PROCESS-HANDLE owns. cl-process-kit always isolates a spawned child in
-;;;; its own process group (see %VALIDATE-SPAWN-INPUTS / SPAWN in
-;;;; spawn.lisp) so that a timeout or CLOSE-PROCESS can terminate not just
-;;;; the immediate child but anything it forked.
-
 (in-package #:process-kit)
 
 (defmacro with-posix-errno-case (body &body errno-clauses)

@@ -1,11 +1,3 @@
-;;;; src/async-task.lisp
-;;;;
-;;;; COMMUNICATE-ASYNC runs COMMUNICATE on a worker thread and publishes its
-;;;; progress as an ordered PROCESS-EVENT stream instead of blocking the
-;;;; caller. Producer (the worker thread, via *PROCESS-EVENT-SINK*) and
-;;;; consumer (a bounded event queue drained by a dispatcher thread that
-;;;; invokes the caller's :EVENT-CALLBACK continuation) run concurrently;
-;;;; PROCESS-TASK is the shared, mutex-guarded state between them.
 (in-package #:process-kit)
 
 (defvar *process-kit-communicate-executor*

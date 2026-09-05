@@ -1,4 +1,3 @@
-;;;; t/spawn-test.lisp
 (in-package #:cl-process-kit/test)
 
 (describe

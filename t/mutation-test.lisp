@@ -1,15 +1,3 @@
-;;;; t/mutation-test.lisp
-;;;;
-;;;; Mutation testing: CL-WEAVE systematically mutates a pure function's body
-;;;; (flipping arithmetic/comparison operators, boolean literals, and
-;;;; conditional branches) and re-checks each variant against the same case
-;;;; battery a unit test would use. A mutation the battery fails to notice
-;;;; ("survived") marks a gap SB-COVER's line/branch coverage cannot see:
-;;;; coverage proves a line executed, not that a wrong result there would be
-;;;; caught. The body is read live from src/ on every run (never copied into
-;;;; this file), so there is nothing here to fall out of sync with the real
-;;;; implementation.
-
 (in-package #:cl-process-kit/test)
 
 (defun %read-defun-forms (pathname)

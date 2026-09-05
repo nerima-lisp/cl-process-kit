@@ -1,13 +1,3 @@
-;;;; src/process-handle.lisp
-;;;;
-;;;; PROCESS-HANDLE wraps SB-EXT:PROCESS with the state cl-process-kit needs
-;;;; beyond what SBCL tracks itself: a cached terminal PROCESS-RESULT (so a
-;;;; process can be waited on and queried more than once), a communication
-;;;; reservation, and enough about the process group to tell an owned group
-;;;; from a merely-inherited pgid. Process-group signaling lives in
-;;;; process-group.lisp; the communication reservation state machine lives
-;;;; in communication-state.lisp.
-
 (in-package #:process-kit)
 
 (defstruct (process-state

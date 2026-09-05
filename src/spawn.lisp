@@ -1,35 +1,10 @@
-;;;; src/spawn.lisp
-;;;;
-;;;; SPAWN is the low-level, asynchronous primitive. It hands back a
-;;;; PROCESS-HANDLE wrapping SB-EXT:PROCESS so callers can do their own
-;;;; streaming I/O or job control; RUN (in run.lisp) is built on top of it.
-;;;; SPAWN-COMMAND is the COMMAND-SPEC-driven convenience wrapper around it.
-;;;;
-;;;; (SB-POSIX is required by src/package.lisp, the first-loaded file --
-;;;; process-group.lisp needs it before this file does.)
-
 (in-package #:process-kit)
 
-;;; --- :FD-LIMIT ---------------------------------------------------------
-;;;
 ;;; SB-POSIX has no RLIMIT bindings, so this is a direct SB-ALIEN FFI call
-;;; to the system libc's GETRLIMIT/SETRLIMIT. RLIM_T is an unsigned long on
-;;; every platform this library targets (macOS and Linux, both LP64), but
-;;; RLIMIT_NOFILE's integer value is NOT portable (7 on Linux, 8 on Darwin
-;;; -- see native/spawn.c's own PARSE_RESOURCE, which resolves the same
-;;; symbolic constant at C compile time instead).
-;;;
-;;; Why this exists: SB-EXT:RUN-PROGRAM's forked child closes every
-;;; inherited file descriptor up to RLIMIT_NOFILE one syscall at a time on
-;;; Darwin (its fast /dev/fd/-listing path is dead code in this SBCL
-;;; build). On a host with a very large NOFILE soft limit (routine under
-;;; Nix/direnv shells -- 524288 was observed locally), that is hundreds of
-;;; thousands of wasted CLOSE(2) calls per spawn, confirmed via SB-SPROF
-;;; and direct measurement to account for roughly a third of per-call
-;;; latency. Lowering the limit is inherited by the child through EXEC
-;;; (rlimits survive exec) and therefore changes the child's own ulimit --
-;;; a real behavioral difference, not just an internal optimization -- so
-;;; SPAWN/RUN only apply it when a caller opts in via :FD-LIMIT.
+;;; to libc's GETRLIMIT/SETRLIMIT. RLIMIT_NOFILE's numeric value differs
+;;; between Darwin and Linux, so it is defined per target below. The child
+;;; inherits a temporary limit through exec; callers must opt in with
+;;; :FD-LIMIT because that changes the child's resource limit.
 (sb-alien:define-alien-type nil
   (sb-alien:struct %rlimit (cur sb-alien:unsigned-long) (max sb-alien:unsigned-long)))
 
@@ -109,7 +84,7 @@ this function returns."
 PROCESS-HANDLE without waiting for it to produce output or exit -- the
 low-level, asynchronous primitive RUN and COMMUNICATE are built on. Reach
 for RUN or RUN-COMMAND instead unless driving the process's own streams or
-job control by hand. :SEARCH resolves COMMAND through :ENVIRONMENT's PATH
+process-group controls directly. :SEARCH resolves COMMAND through :ENVIRONMENT's PATH
 rather than requiring an already-resolved path; :FD-LIMIT is documented on
 RUN, which shares it."
   (let ((raw nil) (requested-command command))

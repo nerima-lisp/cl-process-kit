@@ -1,5 +1,3 @@
-;;;; t/native-spawn-test.lisp
-
 (in-package #:cl-process-kit/test)
 
 (it "launches through the native trampoline"

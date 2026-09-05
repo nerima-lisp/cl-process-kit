@@ -1,11 +1,3 @@
-;;;; src/pty.lisp
-;;;;
-;;;; Optional native controlling-terminal PTY backend. Every native call
-;;;; goes through the trio DEFINE-PTY-SYSCALL declares for a given C symbol:
-;;;; the raw alien routine, a %CHECK-NATIVE-wrapped /CHECKED entry point,
-;;;; and the shared "cpk_pty_..." label used by both -- so the C symbol
-;;;; name is never repeated (and risks drifting) across the file.
-
 (in-package #:process-kit/pty)
 
 (defparameter +poll-interval+ 0.01d0

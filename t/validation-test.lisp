@@ -1,15 +1,3 @@
-;;;; t/validation-test.lisp
-;;;;
-;;;; MAKE-COMMAND and SPAWN-NATIVE are almost entirely guard clauses -- one
-;;;; (UNLESS ok (ERROR ...)) per malformed-input shape -- and the native
-;;;; trampoline decodes a fixed-layout error record through a handful of pure
-;;;; helpers. The behavioral suites exercise the happy path; this file drives
-;;;; the rejection arm of every guard and every branch of the pure decoders,
-;;;; data-first: CL-WEAVE:IT-EACH expands each (label program arguments
-;;;; keyword-plist) row below into its own independently-reported test case
-;;;; at macro-expansion time, so a new guard is covered by adding a row, not
-;;;; a test, and a failing row's label shows up directly in the report.
-
 (in-package #:cl-process-kit/test)
 
 (defun raises-error-p (thunk)

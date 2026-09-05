@@ -1,13 +1,3 @@
-;;;; src/capture.lisp
-;;;;
-;;;; %CAPTURE accumulates one output stream's bytes up to MAX-OUTPUT-CHARACTERS,
-;;;; decoding to text on the fly when RESULT-TYPE is :STRING. Decoding never
-;;;; splits a multibyte character across a read boundary: %DECODE-COMPLETE-PREFIX
-;;;; only decodes as many octets as form complete characters and leaves the rest
-;;;; pending for the next chunk -- delegated to CL-CODEC-KIT:DECODE-PREFIX and
-;;;; CL-CODEC-KIT:LENIENT-DECODE-PREFIX, which generalize the same primitive
-;;;; this file used to hand-roll for UTF-8 alone.
-
 (in-package #:process-kit)
 
 (defstruct (%capture

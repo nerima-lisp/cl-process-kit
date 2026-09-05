@@ -1,5 +1,3 @@
-;;;; src/package.lisp
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (require :sb-posix))
 

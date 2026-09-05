@@ -1,12 +1,3 @@
-;;;; t/fd-readiness-test.lisp
-;;;;
-;;;; SELECT-FDS / WAIT-FOR-INPUT against real pipes. A pipe pair is the whole
-;;;; fixture this needs: the read end is unready until something is written to
-;;;; the write end, the write end is ready immediately, and closing both leaves
-;;;; a descriptor number whose next select(2) fails with EBADF -- which covers
-;;;; readiness, timeout expiry, and genuine syscall failure without spawning a
-;;;; child or touching a terminal.
-
 (in-package #:cl-process-kit/test)
 
 (defun %call-with-pipe (continuation)
@@ -120,14 +111,6 @@ of an already-open TARGET safe here."
       (expect (typep condition 'process-error) :to-be-truthy)))
 
   (it "accepts the highest usable descriptor and rejects the next one up"
-    ;; The boundary select(2) actually has. Its first argument is one PAST the
-    ;; highest descriptor watched and must stay strictly below FD_SETSIZE, so
-    ;; +MAXIMUM-FD+ (1022) is the last watchable number and 1023 -- still inside
-    ;; the bitmap, so not obviously wrong -- is already too high. 1023 used to
-    ;; pass the guard and reach SB-UNIX:UNIX-FAST-SELECT, which rejected it with
-    ;; a bare SIMPLE-ERROR: neither condition this library documents, so a caller
-    ;; catching FD-WAIT-FAILED around its event loop lost the whole loop to it.
-    ;; Both ends are asserted here so that moving the boundary either way fails.
     (%with-pipe (read-fd write-fd)
       (%with-fd-at (high read-fd +maximum-fd+)
         (expect (wait-for-input (list high) :timeout 0) :to-be nil)
@@ -135,36 +118,16 @@ of an already-open TARGET safe here."
         (expect (wait-for-input (list high) :timeout 0) :to-equal (list high))))
     (let ((condition (handler-case (wait-for-input (list (1+ +maximum-fd+)) :timeout 0)
                        (error (condition) condition))))
-      ;; Deliberately catching ERROR, not FD-SET-OVERFLOW: the defect was that
-      ;; the wrong condition type escaped, which a narrow handler would hide.
       (expect (typep condition 'fd-set-overflow) :to-be-truthy)
       (expect (fd-set-overflow-fd condition) :to-be (1+ +maximum-fd+))
       (expect (fd-set-overflow-limit condition) :to-be +maximum-fd+)))
 
   (it "waits out a timeout too large for one struct timeval rather than failing it"
-    ;; Darwin's select(2) refuses a tv_sec above 1e8 with EINVAL instead of
-    ;; clamping it, so passing the documented maximum straight through came back
-    ;; as FD-WAIT-FAILED in well under a millisecond. A caller that maps that
-    ;; condition to "nothing ready" -- cl-tmux's event loop must, since a peer
-    ;; can close a polled descriptor underneath it -- would turn a long block
-    ;; into a hot spin. Both halves of the contract are asserted: the documented
-    ;; maximum must not fail, and it must genuinely block until something wakes
-    ;; it rather than return early.
     (%with-pipe (read-fd write-fd)
       (%poke-fd write-fd)
       (expect (wait-for-input (list read-fd) :timeout +maximum-fd-wait-seconds+)
               :to-equal (list read-fd)))
     (%with-pipe (read-fd write-fd)
-      ;; The wait is bounded by SB-EXT:WITH-TIMEOUT and the poker is joined,
-      ;; because everything that wakes this wait is a fixture that can fail:
-      ;; MAKE-THREAD can refuse, and %POKE-FD's UNIX-WRITE reports failure as a
-      ;; return value rather than a condition. Without the bound, one broken
-      ;; fixture leaves the main thread inside select(2) against a 68-year
-      ;; deadline with nothing able to wake it, and this suite has no
-      ;; runner-level timeout to end it -- a hang, not a failure. The timer's
-      ;; interrupt does end it: SELECT-FDS retries errno EINTR and nothing
-      ;; else, so a Lisp condition signalled mid-wait unwinds out of the
-      ;; syscall instead of being turned back into another select.
       (let ((poker (sb-thread:make-thread (lambda () (sleep 0.2) (%poke-fd write-fd))
                                           :name "cl-process-kit fd-readiness late poker")))
         (multiple-value-bind (ready elapsed)
@@ -174,9 +137,6 @@ of an already-open TARGET safe here."
                    (sb-ext:with-timeout 10
                      (wait-for-input (list read-fd) :timeout +maximum-fd-wait-seconds+))
                  (sb-ext:timeout () :never-woken))))
-          ;; UNIX-WRITE's one written octet. Joining with a :DEFAULT turns a
-          ;; poker that died or stalled into this assertion rather than into
-          ;; silence, which is what discarding the thread handle bought.
           (expect (sb-thread:join-thread poker :timeout 10 :default :poker-failed) :to-be 1)
           (expect ready :to-equal (list read-fd))
           (expect (>= elapsed 0.15d0) :to-be-truthy)))))

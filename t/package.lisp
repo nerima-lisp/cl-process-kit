@@ -1,4 +1,3 @@
-;;;; t/package.lisp
 (defpackage #:cl-process-kit/test (:use #:cl #:process-kit)
   (:shadowing-import-from #:cl-weave #:describe)
   (:import-from
@@ -12,12 +11,6 @@
    #:defmatcher)
   (:export #:run-tests #:+suite-complete-p+))
 
-;;; The cl-process-kit/pty-test system's package. It lives here rather than in
-;;; a second manifest because CODING_STANDARD.md keeps defpackage forms in one
-;;; file per directory, and because t/ has no other name reserved for a
-;;; manifest -- `package.lisp` and `suite.lisp` are the only two exempt from
-;;; the `<source>-test.lisp` rule. Loading this file from the pty-test system
-;;; costs only the fixtures above, which need nothing the pty system lacks.
 (defpackage #:cl-process-kit/pty-test (:use #:cl)
   (:import-from #:cl-weave #:expect #:it #:run-all)
   (:export #:run-tests))
@@ -34,10 +27,8 @@ skipped rather than given more headroom because a timing assertion loose
 enough to survive arbitrary contention no longer asserts the timing.
 
 Coverage floors are enforced only when this flag is true: those seven cases
-exercise SRC/ branches nothing else does, so a Linux run that skips them is
-not comparable to the complete-suite run the floors were calibrated
-against, and holding it to that floor reports the skip itself as a
-regression.")
+exercise SRC/ branches nothing else does, so a Linux run that skips them
+cannot be compared with a complete-suite run at the same floor.")
 
 (defun run-tests ()
   (unless (run-all :reporter :spec :pass-with-no-tests nil)

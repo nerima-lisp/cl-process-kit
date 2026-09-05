@@ -1,13 +1,3 @@
-;;;; t/logging-test.lisp
-;;;;
-;;;; *PROCESS-LOGGER* is NIL by default, so the %LOG-guarded observability
-;;;; branches scattered through SPAWN, COMMUNICATE, and PIPELINE never run
-;;;; under the rest of the suite. These tests bind it to a capturing CL-LOG-KIT
-;;;; logger and assert that each lifecycle event -- launch, timeout, and
-;;;; cancellation escalation -- surfaces as the structured record the README
-;;;; documents. CAPTURING-LOG factors out the logger/handler fixture so each
-;;;; example reads as "run this, then inspect the records it emitted."
-
 (in-package #:cl-process-kit/test)
 
 (defun call-capturing-log (thunk)

@@ -1,9 +1,3 @@
-;;;; t/run-test.lisp
-;;;;
-;;;; RUN/RUN-COMMAND's non-timeout behavior: environment/directory handling,
-;;;; stdio policies, and output capture/encoding. Timeout/SIGTERM->SIGKILL
-;;;; escalation and cancellation-token handling live in
-;;;; run-timeout-test.lisp.
 (in-package #:cl-process-kit/test)
 
 (describe "run-command"

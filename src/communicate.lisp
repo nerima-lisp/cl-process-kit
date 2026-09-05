@@ -1,11 +1,3 @@
-;;;; src/communicate.lisp
-;;;;
-;;;; COMMUNICATE drains a spawned process's stdout/stderr, optionally feeds
-;;;; stdin, waits for it to exit (escalating SIGTERM -> SIGKILL past a
-;;;; deadline), and returns a PROCESS-RESULT. COMMUNICATE itself is a thin
-;;;; cancellation-aware wrapper around %COMMUNICATE-BASE that races the
-;;;; process against a caller-supplied CANCELLATION-TOKEN using a watcher
-;;;; thread.
 (in-package #:process-kit)
 
 (defun %validate-outcome-policy (name policy)

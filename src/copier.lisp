@@ -1,12 +1,3 @@
-;;;; src/copier.lisp
-;;;;
-;;;; Background threads that pump bytes between a child process and its
-;;;; captures: one %COPIER per output stream drains it into a %CAPTURE
-;;;; (optionally also publishing each chunk to *PROCESS-EVENT-SINK*, the
-;;;; continuation COMMUNICATE-ASYNC installs to turn raw bytes into
-;;;; PROCESS-EVENTs), and one feeder thread writes INPUT to the child's
-;;;; stdin.
-
 (in-package #:process-kit)
 
 (defstruct (%copier (:constructor %make-copier))

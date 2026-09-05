@@ -1,11 +1,3 @@
-;;;; src/logging.lisp
-;;;;
-;;;; Optional structured observability via CL-LOG-KIT. *PROCESS-LOGGER* is
-;;;; NIL by default -- launch, timeout/cancellation signal escalation, and
-;;;; pipeline stage failures become log-kit records only once a caller binds
-;;;; it, so the library stays silent (and allocation-free on this path) the
-;;;; way it always has.
-
 (in-package #:process-kit)
 
 (defvar *process-logger* nil
