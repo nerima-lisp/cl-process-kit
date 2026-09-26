@@ -71,7 +71,7 @@ dynamically computed value rather than asserting a fixed known state.
 
 ## Running the suite on both platforms
 
-The suite currently reports 225 tests. All of them run on macOS; seven are
+The suite currently reports 227 tests. All of them run on macOS; seven are
 `it-skip`ped on Linux under `#+linux`, each a case asserting that a process
 group is gone within a 0.1s grace period. Timing a contended shared CI runner
 cannot reliably deliver, so `t/package.lisp`'s `+suite-complete-p+` records
@@ -196,7 +196,7 @@ no such constraint, lives in `t/package.lisp` with the rest.
   standalone shell script (invoked directly by `nix flake check`, not
   through `run-tests.lisp`) that drives the compiled trampoline binary's
   full CLI surface — fd mapping, fd passing, `--chdir`, `--session`,
-  `--rlimit`, `--umask`, and the 8-byte launch-error record — without a
+  `--detached`, `--rlimit`, `--umask`, and the 8-byte launch-error record — without a
   Lisp process in the way.
 - `pty-test.lisp` (in the separate `cl-process-kit/pty-test` system, run via
   `run-pty-tests.lisp`) covers the [PTY backend](guide/pty.md): controlling

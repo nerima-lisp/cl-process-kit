@@ -114,8 +114,11 @@ the keyword PROCESS-KIT reports a NATIVE-PROCESS-LAUNCH-ERROR failed during.")
                      (sb-sys:make-fd-stream
                       read-fd :input t :element-type '(unsigned-byte 8)
                       :buffering :none :auto-close t))
+               ;; The trampoline may leave its group and call setsid after
+               ;; exec; checking the group before the launch-error pipe
+               ;; reaches EOF would observe it mid-move.
                (setf process
-                     (spawn
+                     (%spawn
                       *native-spawn-program*
                       (%native-spawn-arguments
                        program arguments write-fd fd-mappings pass-fds
@@ -124,6 +127,7 @@ the keyword PROCESS-KIT reports a NATIVE-PROCESS-LAUNCH-ERROR failed during.")
                       :search t :input input :output output :error error
                       :environment environment :external-format external-format
                       :status-hook status-hook
+                      :defer-group-check t
                       :preserve-fds
                       (remove-duplicates
                        (append (list write-fd) pass-fds
@@ -146,6 +150,10 @@ the keyword PROCESS-KIT reports a NATIVE-PROCESS-LAUNCH-ERROR failed during.")
                             :program program :arguments (copy-list arguments)
                             :directory directory :cause errno
                             :phase phase :errno errno))))
+               (handler-case (%verify-process-group (process-id process))
+                 (process-group-isolation-error (condition)
+                   (%cleanup-failed-spawn (%handle-raw-process process))
+                   (error condition)))
                process)
           (when write-fd
             (ignore-errors (sb-posix:close write-fd)))

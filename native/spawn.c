@@ -16,7 +16,10 @@
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
+
+#define SESSION_RETRY_SECONDS 5
 
 struct fd_map {
     int target;
@@ -209,6 +212,48 @@ static gid_t *parse_groups(const char *value, size_t *count)
     return groups;
 }
 
+static int monotonic_before(const struct timespec *deadline)
+{
+    struct timespec now;
+
+    if (clock_gettime(CLOCK_MONOTONIC, &now) < 0)
+        return 0;
+    return now.tv_sec < deadline->tv_sec ||
+           (now.tv_sec == deadline->tv_sec && now.tv_nsec < deadline->tv_nsec);
+}
+
+/* The launcher (SBCL's run-program) makes this process a group leader, and
+ * setsid() refuses a group leader, so the process first moves into its
+ * parent's group. setsid() also refuses while any group whose ID equals
+ * this PID still exists, and on Darwin the group just vacated can remain
+ * visible for a while after its last member left (observed for up to about
+ * a tenth of a second in a few percent of launches). The group is empty and
+ * nothing in this launch rejoins it, so EPERM is retried until it
+ * disappears, within a bound that turns a stuck group into a :session
+ * failure. */
+static void start_session(void)
+{
+    const struct timespec pause = {0, 100000};
+    struct timespec deadline;
+
+    if (getpgrp() == getpid()) {
+        pid_t parent_group = getpgid(getppid());
+        if (parent_group < 0 || setpgid(0, parent_group) < 0)
+            fail(CPK_SPAWN_PHASE_SESSION);
+    }
+    if (clock_gettime(CLOCK_MONOTONIC, &deadline) < 0)
+        fail(CPK_SPAWN_PHASE_SESSION);
+    deadline.tv_sec += SESSION_RETRY_SECONDS;
+    while (setsid() < 0) {
+        int saved_errno = errno;
+        if (saved_errno != EPERM || !monotonic_before(&deadline)) {
+            errno = saved_errno;
+            fail(CPK_SPAWN_PHASE_SESSION);
+        }
+        (void)nanosleep(&pause, NULL);
+    }
+}
+
 int main(int argc, char **argv)
 {
     struct fd_map *maps = calloc((size_t)argc, sizeof(*maps));
@@ -298,16 +343,12 @@ int main(int argc, char **argv)
     }
     if (directory != NULL && chdir(directory) < 0)
         fail(CPK_SPAWN_PHASE_CHDIR);
-    if (new_session || detached) {
-        if (getpgrp() == getpid()) {
-            pid_t parent_group = getpgid(getppid());
-            if (parent_group < 0 || setpgid(0, parent_group) < 0)
-                fail(CPK_SPAWN_PHASE_SESSION);
-        }
-        if (setsid() < 0)
-            fail(CPK_SPAWN_PHASE_SESSION);
-    }
-    if (process_group >= 0 && !(new_session && process_group == 0) &&
+    if (new_session || detached)
+        start_session();
+    /* A session leader already leads a group whose ID is its PID, and
+     * setpgid() refuses a session leader, so group 0 is satisfied here. */
+    if (process_group >= 0 &&
+        !((new_session || detached) && process_group == 0) &&
         setpgid(0, process_group == 0 ? getpid() : (pid_t)process_group) < 0)
         fail(CPK_SPAWN_PHASE_PROCESS_GROUP);
     if (group_count > 0 && setgroups((int)group_count, groups) < 0)

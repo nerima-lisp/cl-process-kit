@@ -78,6 +78,15 @@ this function returns."
                           (sb-ext:process-error raw)))
       (when (streamp stream) (ignore-errors (close stream))))))
 
+(defun %verify-process-group (pid)
+  "Return PID's process group, signaling PROCESS-GROUP-ISOLATION-ERROR unless
+PID leads it. An already-reaped PID counts as its own group."
+  (let ((pgid (with-posix-errno-case (sb-posix:getpgid pid)
+                (sb-posix:esrch pid))))
+    (unless (= pid pgid)
+      (error 'process-group-isolation-error :pid pid :pgid pgid))
+    pgid))
+
 (defun spawn (command arguments &key (search nil) input output error environment directory
                                    (external-format :default) status-hook preserve-fds fd-limit)
   "Launch COMMAND with ARGUMENTS as its own process group and return a
@@ -87,6 +96,19 @@ for RUN or RUN-COMMAND instead unless driving the process's own streams or
 process-group controls directly. :SEARCH resolves COMMAND through :ENVIRONMENT's PATH
 rather than requiring an already-resolved path; :FD-LIMIT is documented on
 RUN, which shares it."
+  (%spawn command arguments
+          :search search :input input :output output :error error
+          :environment environment :directory directory
+          :external-format external-format :status-hook status-hook
+          :preserve-fds preserve-fds :fd-limit fd-limit))
+
+(defun %spawn (command arguments &key search input output error environment directory
+                                   (external-format :default) status-hook preserve-fds fd-limit
+                                   defer-group-check)
+  "SPAWN's implementation. DEFER-GROUP-CHECK skips the process-group check
+and records PID as the group: a caller whose child still rearranges its own
+group after exec (SPAWN-NATIVE's trampoline) must call
+%VERIFY-PROCESS-GROUP itself once that setup has finished."
   (let ((raw nil) (requested-command command))
     (flet ((abort-spawn (condition)
              "Both HANDLER-CASE clauses below reach this on any failure past
@@ -113,10 +135,7 @@ part stays in each clause."
                       :external-format external-format :status-hook status-hook
                       :preserve-fds preserve-fds :wait nil :use-posix-spawn nil))))
             (let* ((pid (sb-ext:process-pid raw))
-                   (pgid (with-posix-errno-case (sb-posix:getpgid pid)
-                           (sb-posix:esrch pid))))
-              (unless (= pid pgid)
-                (error 'process-group-isolation-error :pid pid :pgid pgid))
+                   (pgid (if defer-group-check pid (%verify-process-group pid))))
               (%log :info "process spawned" :program command :pid pid :pgid pgid)
               (%make-process-handle
                :raw-process raw :pid pid :pgid pgid :program command

@@ -94,3 +94,15 @@ record down a pipe held open only until a successful `exec` closes it;
 `spawn-native` reads that pipe synchronously before returning, so a launch
 failure is always reported as a condition from the `spawn-native` call
 itself rather than discovered later through `process-wait`/`communicate`.
+
+The trampoline is launched like any `spawn` child, so it starts as the
+leader of its own process group. `setsid` refuses a group leader, so for
+`session` or `detached` the trampoline first moves into its parent's group
+and then calls `setsid`. On macOS the group it vacated can stay visible for
+a short time afterwards, during which `setsid` fails with `EPERM`; the
+trampoline retries for up to five seconds before reporting a `:session`
+failure. Because the child changes its group after the trampoline has
+started, `spawn-native` checks that the child leads its own process group
+only after the launch-error pipe closes. A session leader already leads its
+own group, so `process-group 0` combined with `session` or `detached` needs
+no further step.
