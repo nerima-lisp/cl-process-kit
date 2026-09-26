@@ -1,16 +1,54 @@
 (in-package #:process-kit)
 
-(defvar *process-kit-communicate-executor*
-  (cl-concurrent-kit:make-executor
-   :size 8
-   :name "process-kit communicate workers"
-   :queue-capacity 256))
+;;; The shared executors are created on first use, never at load time: SBCL
+;;; refuses SAVE-LISP-AND-DIE and SB-POSIX:FORK while a second thread exists.
+(defvar *process-kit-executor-lock* (sb-thread:make-mutex :name "process-kit executors"))
 
-(defvar *process-kit-dispatch-executor*
-  (cl-concurrent-kit:make-executor
-   :size 4
-   :name "process-kit event dispatchers"
-   :queue-capacity 256))
+(defvar *process-kit-communicate-executor* nil)
+
+(defvar *process-kit-dispatch-executor* nil)
+
+(defun %process-kit-executor (role)
+  "Return the shared executor for ROLE (:COMMUNICATE or :DISPATCH), creating
+it if no current one exists."
+  (sb-thread:with-mutex
+   (*process-kit-executor-lock*)
+   (ecase role
+     (:communicate
+      (or *process-kit-communicate-executor*
+          (setf *process-kit-communicate-executor*
+                (cl-concurrent-kit:make-executor
+                 :size 8
+                 :name "process-kit communicate workers"
+                 :queue-capacity 256))))
+     (:dispatch
+      (or *process-kit-dispatch-executor*
+          (setf *process-kit-dispatch-executor*
+                (cl-concurrent-kit:make-executor
+                 :size 4
+                 :name "process-kit event dispatchers"
+                 :queue-capacity 256)))))))
+
+(defun shutdown-process-kit ()
+  "Stop every thread cl-process-kit owns and reset its shared executors, so
+the next COMMUNICATE-ASYNC or RUN-COMMAND-ASYNC call creates them again.
+Already-submitted jobs run to completion before their worker exits, so this
+blocks while a PROCESS-TASK is still running; cancel or await tasks first.
+Registered on SB-EXT:*SAVE-HOOKS*. Return no values."
+  (let ((executors
+         (sb-thread:with-mutex
+          (*process-kit-executor-lock*)
+          (prog1
+              (remove nil (list *process-kit-dispatch-executor* *process-kit-communicate-executor*))
+            (setf *process-kit-dispatch-executor* nil
+                  *process-kit-communicate-executor* nil)))))
+    (dolist (executor executors)
+      (cl-concurrent-kit:shutdown-executor executor))
+    (dolist (executor executors)
+      (cl-concurrent-kit:await-executor-termination executor)))
+  (values))
+
+(pushnew 'shutdown-process-kit sb-ext:*save-hooks*)
 
 (defun %submit-process-kit-job (executor thunk role)
   (multiple-value-bind (promise accepted-p)
@@ -302,13 +340,13 @@ re-signaling, so a caller never sees a task stuck in :RESERVED."
       (progn
         (setf (%process-task-dispatcher task)
               (%submit-process-kit-job
-               *process-kit-dispatch-executor*
+               (%process-kit-executor :dispatch)
                (lambda ()
                  (%task-dispatch task))
                "event dispatcher"))
         (setf (%process-task-worker task)
               (%submit-process-kit-job
-               *process-kit-communicate-executor*
+               (%process-kit-executor :communicate)
                (lambda ()
                  (sb-thread:with-mutex
                   ((%process-task-mutex task))
