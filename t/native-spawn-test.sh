@@ -60,6 +60,10 @@ test "$(cat "$temporary/directory")" = "$(cd "$temporary" && pwd -P)"
 session_child=$!
 wait "$session_child"
 
+"$trampoline" --error-fd 2 --detached 1 --pgroup 0 -- "$sh_bin" -c 'exit 0' &
+detached_child=$!
+wait "$detached_child"
+
 "$trampoline" --error-fd 2 --rlimit nofile:32:32 -- \
   "$sh_bin" -c 'test "$(ulimit -n)" = 32'
 
