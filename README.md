@@ -43,7 +43,7 @@ The source for that site lives in [docs/src/](docs/src/).
 ```nix
 # flake.nix
 inputs.cl-process-kit = {
-  url = "github:nerima-lisp/cl-process-kit/v3.3.0";
+  url = "github:nerima-lisp/cl-process-kit/v3.3.1";
   inputs.nixpkgs.follows = "nixpkgs";
 };
 ```

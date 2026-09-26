@@ -71,7 +71,7 @@ dynamically computed value rather than asserting a fixed known state.
 
 ## Running the suite on both platforms
 
-The suite currently reports 227 tests. All of them run on macOS; seven are
+The suite currently reports 232 tests. All of them run on macOS; seven are
 `it-skip`ped on Linux under `#+linux`, each a case asserting that a process
 group is gone within a 0.1s grace period. Timing a contended shared CI runner
 cannot reliably deliver, so `t/package.lisp`'s `+suite-complete-p+` records
@@ -185,6 +185,8 @@ no such constraint, lives in `t/package.lisp` with the rest.
 - `pipeline-test.lisp` covers `run-pipeline`.
 - `async-task-test.lisp` covers `communicate-async`/`run-command-async`/the
   event cursor API.
+- `lifecycle-test.lisp` covers the shared executor threads: none at load
+  time, `shutdown-process-kit`, saving an executable, and forking.
 - `conditions-test.lisp` asserts each condition's `:report` output.
 - `logging-test.lisp` binds `*process-logger*` and checks the lifecycle
   records.
@@ -215,6 +217,23 @@ no such constraint, lives in `t/package.lisp` with the rest.
   `pipeline-success-p` with `cl-weave:run-mutations`, reading each `defun`
   body live from `src/command.lisp` on every run so the case battery can
   never silently drift out of sync with the implementation it is checking.
+
+## Threads, saved images, and fork
+
+Loading `cl-process-kit` must not start a thread: SBCL refuses
+`save-lisp-and-die` and `sb-posix:fork` while a second thread runs, so a
+thread started at load time breaks every consumer that builds an executable
+or forks. The worker pools in `async-task.lisp` are created on first use and
+stopped by `shutdown-process-kit`; see
+[Worker threads and shutdown](guide/async.md#worker-threads-and-shutdown).
+
+Create any new long-lived thread the same way, make `shutdown-process-kit`
+stop it, and add its name to `+kit-thread-names+` in
+`t/lifecycle-test.lisp`. Per-call threads (copier and feeder threads in
+`copier.lisp`, `communicate.lisp`, and `pipeline.lisp`) are joined before
+their call returns and need no shutdown. The save test deliberately saves
+without calling `shutdown-process-kit`, so it exercises the
+`sb-ext:*save-hooks*` registration.
 
 ## Conventions
 

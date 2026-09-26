@@ -88,6 +88,7 @@ compose specs without a shell.")
    #:process-task-first-event-sequence #:process-task-last-event-sequence
    #:process-task-history-evicted-count
    #:callback-errors #:dropped-event-count
+   #:shutdown-process-kit
 
    ;; run / run-command / run-pipeline: the high-level synchronous entry points
    #:run #:run/checked #:run-shell

@@ -174,3 +174,33 @@ be dropped, and contains either the final result or terminal condition.
 Task completion is published only after this terminal callback returns, so
 a completed `await-process` also means terminal-event dispatch has
 finished.
+
+## Worker threads and shutdown
+
+```lisp
+shutdown-process-kit () -> (values)
+```
+
+`communicate-async` and `run-command-async` run on two shared worker pools
+owned by the library, whose threads are named "process-kit communicate
+workers" and "process-kit event dispatchers". Loading the system starts no
+thread; the first asynchronous call creates both pools. The synchronous API
+(`run`, `run-command`, `communicate`, `run-pipeline`) does not use them; its
+copier threads live only for the duration of each call.
+
+`shutdown-process-kit` stops accepting new asynchronous work, lets jobs
+already submitted finish, joins every pool thread, and resets the pools, so
+the next asynchronous call creates them again. It blocks while a task is
+still running, so cancel or await outstanding tasks first. Calling it again
+when the pools do not exist does nothing. Call it only when no other thread
+is making asynchronous calls: such a call can either signal an error or
+create new pools that outlive the shutdown. Do not call it from an
+`event-callback`, which itself runs on a pool thread.
+
+`sb-ext:save-lisp-and-die` and `sb-posix:fork` refuse to run while more than
+one thread exists. `shutdown-process-kit` is registered on
+`sb-ext:*save-hooks*`, so saving an image (directly or through
+`asdf:program-op`) works even after the library was used, and the saved
+image creates fresh pools on its first asynchronous call. SBCL has no
+equivalent hook for `sb-posix:fork`, so call `shutdown-process-kit` yourself
+before forking, after every synchronous call in other threads has returned.

@@ -161,7 +161,7 @@
            (setf (process-kit::%process-task-pending-drops task) 1)
            (let ((promise
                    (cl-concurrent-kit:submit
-                    process-kit::*process-kit-communicate-executor*
+                    (process-kit::%process-kit-executor :communicate)
                     (lambda ()
                       (process-kit::%task-submit-output task :stdout #(2))))))
              (multiple-value-bind (event received-p)
@@ -203,7 +203,7 @@
            (cl-concurrent-kit:close-channel cancellation-channel)
            (let ((promise
                    (cl-concurrent-kit:submit
-                    process-kit::*process-kit-communicate-executor*
+                    (process-kit::%process-kit-executor :communicate)
                     (lambda ()
                       (process-kit::%task-submit-output task :stdout #(2))))))
              (expect (cl-concurrent-kit:await promise) :to-be nil)
