@@ -61,7 +61,8 @@ policies before returning it."
                   (decoding-error-policy :replace)
                   (clock +default-clock+)
                   (sleeper +default-sleeper+)
-                  fd-limit)
+                  fd-limit
+                  (use-posix-spawn nil))
   (%ensure
    (and (or (stringp command) (pathnamep command)) (plusp (length (namestring command))))
    "COMMAND must be a non-empty string or pathname.")
@@ -95,7 +96,9 @@ policies before returning it."
            :external-format
            :latin-1
            :fd-limit
-           fd-limit)))
+           fd-limit
+           :use-posix-spawn
+           use-posix-spawn)))
     (unwind-protect (let ((result
                            (communicate
                             process
@@ -164,7 +167,8 @@ PROCESS-EXIT-ERROR unless it succeeds."
                     cancellation-token
                     (on-cancel :error)
                     (max-output-characters +default-output-limit+)
-                    (drain-timeout-seconds +default-drain-timeout-seconds+))
+                    (drain-timeout-seconds +default-drain-timeout-seconds+)
+                    (use-posix-spawn nil))
   "Run COMMAND (a validated COMMAND-SPEC) and return a PROCESS-RESULT,
 mirroring RUN but reading its I/O policy, environment, and search behavior
 from the spec's own slots instead of keyword arguments. Prefer this over
@@ -176,10 +180,11 @@ running, or is composed into a pipeline (see RUN-PIPELINE)."
   (with-process
    (process
     (spawn-command
-     command
-     :stdin
-     (if input :pipe
-       nil)))
+           command
+           :stdin
+           (if input :pipe
+             nil)
+           :use-posix-spawn use-posix-spawn))
    (let ((result
           (communicate
            process
