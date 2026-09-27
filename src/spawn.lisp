@@ -140,7 +140,7 @@ part stays in each clause."
                      (if wrapper-p
                          (append
                           (list "-c"
-                                "cd \"$1\" && shift 2 && exec \"$@\""
+                                "cd \"$1\" && shift 1 && exec \"$@\""
                                 "cl-process-kit-posix-spawn-wrapper"
                                 (namestring (%effective-directory directory))
                                 (namestring command))
