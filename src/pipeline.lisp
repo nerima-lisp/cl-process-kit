@@ -60,7 +60,7 @@
         (when close-streams-p
           (ignore-errors (close-process-streams process)))))))
 
-(defun %spawn-pipeline-stages (commands pipes input grace-period)
+(defun %spawn-pipeline-stages (commands pipes input grace-period use-posix-spawn)
   "Spawn each stage of COMMANDS wired stdout-to-stdin through PIPES --
 INPUT feeds the first stage's stdin, and the last stage's stdout is left
 as a pipe for the caller to drain. Returns the spawned PROCESS-HANDLEs in
@@ -76,7 +76,8 @@ already spawned before re-signaling."
                         for stdout = (if (= index (1- count)) :pipe
                                        (cdr (nth index pipes)))
                         do (push
-                            (spawn-command command :stdin stdin :stdout stdout :stderr :pipe)
+                            (spawn-command command :stdin stdin :stdout stdout :stderr :pipe
+                                           :use-posix-spawn use-posix-spawn)
                             processes))
       (error (condition)
         (%terminate-processes processes grace-period)
@@ -187,7 +188,8 @@ bookkeeping that RUN-PIPELINE's worker thread wraps around it."
 (defun run-pipeline (commands &key input timeout
                                 (grace-period +default-grace-period-seconds+) cancellation-token
                                 (on-timeout :error) (on-cancel :error)
-                                (max-output-characters +default-output-limit+))
+                                (max-output-characters +default-output-limit+)
+                                (use-posix-spawn nil))
   "Wire each of COMMANDS' stdout to the next one's stdin, run every stage's
 COMMUNICATE concurrently on its own thread, and return one aggregated
 PIPELINE-RESULT once every stage has finished. :TIMEOUT/:ON-TIMEOUT and
@@ -272,7 +274,7 @@ still will not join after that cleanup window."
              (progn
                (loop repeat (1- count) do (push (%make-pipe-streams) pipes))
                (setf pipes (nreverse pipes))
-               (setf processes (%spawn-pipeline-stages commands pipes input grace-period))
+               (setf processes (%spawn-pipeline-stages commands pipes input grace-period use-posix-spawn))
                ;; After SPAWN-COMMAND duplicates the descriptors into each
                ;; child, the parent's copies are redundant and must close so
                ;; downstream stages can observe EOF promptly.

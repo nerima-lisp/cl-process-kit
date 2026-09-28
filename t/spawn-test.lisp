@@ -372,6 +372,12 @@
 (describe
  "posix_spawn selection and directories"
  (it
+  "preserves search nil for bare commands through the directory wrapper"
+  (signals process-launch-error
+           (spawn "definitely-not-a-cl-process-kit-program" nil
+                  :directory (uiop:temporary-directory)
+                  :use-posix-spawn t)))
+ (it
   "uses the requested directory for relative commands and preserves argv/environment"
   (let* ((directory (merge-pathnames (format nil "cl-process-kit-posix-~A/" (gensym))
                                      (uiop:temporary-directory)))
@@ -391,7 +397,7 @@
              (expect
               (string= (process-result-stdout result)
                        (format nil "environment-value:argv-value:~A"
-                               (string-right-trim "/" (namestring (truename directory)))))
+                               (string-right-trim "/" (namestring directory))))
               :to-be-truthy)))
       (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
  (it

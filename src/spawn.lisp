@@ -132,10 +132,24 @@ part stays in each clause."
               (%ensure (uiop:directory-exists-p (%effective-directory directory))
                        "DIRECTORY does not exist or is not a directory: ~S"
                        directory))
+            (when (and use-posix-spawn directory (not search))
+              ;; The shell wrapper would otherwise report a missing command
+              ;; as a child exit status instead of preserving RUN-PROGRAM's
+              ;; parent-side launch error for :SEARCH NIL.
+              (%ensure (%executable-file-p
+                        (merge-pathnames (namestring command)
+                                         (%effective-directory directory)))
+                       "Executable ~S was not found in DIRECTORY: ~S"
+                       command directory))
             (when search
               (setf command (%resolve-executable command arguments environment directory)))
             (let* ((wrapper-p (and use-posix-spawn directory))
                    (launch-command (if wrapper-p "/bin/sh" command))
+                   (wrapper-command
+                     (let ((name (namestring command)))
+                       (if (and (not search) (not (position #\/ name)))
+                           (concatenate 'string "./" name)
+                           name)))
                    (launch-arguments
                      (if wrapper-p
                          (append
@@ -143,7 +157,7 @@ part stays in each clause."
                                 "cd \"$1\" && shift 1 && exec \"$@\""
                                 "cl-process-kit-posix-spawn-wrapper"
                                 (namestring (%effective-directory directory))
-                                (namestring command))
+                                wrapper-command)
                           arguments)
                          arguments))
                    (launch-directory (unless wrapper-p directory)))

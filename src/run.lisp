@@ -227,13 +227,15 @@ reap the child before re-signaling the condition."
    (not (member :cancellation-token options :test (function eq)))
    "RUN-COMMAND-ASYNC owns its cancellation token; cancel the returned task.")
   (let* ((input (getf options :input))
+         (use-posix-spawn (getf options :use-posix-spawn))
          (user-callback (getf options :event-callback))
          (process
           (spawn-command
            command
            :stdin
            (if input :pipe
-             nil))))
+             nil)
+           :use-posix-spawn use-posix-spawn)))
     (handler-case (let ((communication-options
                          (%plist-without
                           options
