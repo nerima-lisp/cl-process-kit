@@ -274,7 +274,9 @@ still will not join after that cleanup window."
              (progn
                (loop repeat (1- count) do (push (%make-pipe-streams) pipes))
                (setf pipes (nreverse pipes))
-               (setf processes (%spawn-pipeline-stages commands pipes input grace-period use-posix-spawn))
+               (setf processes
+                     (%spawn-pipeline-stages commands pipes input grace-period
+                                             use-posix-spawn))
                ;; After SPAWN-COMMAND duplicates the descriptors into each
                ;; child, the parent's copies are redundant and must close so
                ;; downstream stages can observe EOF promptly.
