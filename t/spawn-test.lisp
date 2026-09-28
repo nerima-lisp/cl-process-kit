@@ -368,3 +368,41 @@
  (it
   "rejects a directory that shadows a searched program name"
   (signals process-launch-error (spawn "etc" nil :search t :environment (list "PATH=/")))))
+
+(describe
+ "posix_spawn selection and directories"
+ (it
+  "preserves search nil for bare commands through the directory wrapper"
+  (signals process-launch-error
+           (spawn "definitely-not-a-cl-process-kit-program" nil
+                  :directory (uiop:temporary-directory)
+                  :use-posix-spawn t)))
+ (it
+  "uses the requested directory for relative commands and preserves argv/environment"
+  (let* ((directory (merge-pathnames (format nil "cl-process-kit-posix-~A/" (gensym))
+                                     (uiop:temporary-directory)))
+         (script (merge-pathnames "relative-command" directory)))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist script)
+           (with-open-file (stream script :direction :output :if-exists :supersede)
+             (format stream "#!/bin/sh~%printf '%s:%s:%s' \"$VALUE\" \"$1\" \"$(pwd)\"~%"))
+           (sb-posix:chmod (namestring script) #o755)
+           (let* ((process
+                    (spawn "./relative-command" (list "argv-value")
+                           :input nil :output :stream :error :stream
+                           :environment (list "PATH=/bin:/usr/bin" "VALUE=environment-value")
+                           :directory directory :use-posix-spawn t))
+                  (result (communicate process)))
+             (expect
+              (string= (process-result-stdout result)
+                       (format nil "environment-value:argv-value:~A"
+                               (string-right-trim "/" (namestring directory))))
+              :to-be-truthy)))
+      (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
+ (it
+  "reports an invalid posix_spawn directory as a process launch error"
+  (signals process-launch-error
+           (spawn "/bin/true" nil
+                  :directory #P"/definitely/missing-cl-process-kit-directory/"
+                  :use-posix-spawn t))))

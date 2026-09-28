@@ -88,7 +88,8 @@ PID leads it. An already-reaped PID counts as its own group."
     pgid))
 
 (defun spawn (command arguments &key (search nil) input output error environment directory
-                                   (external-format :default) status-hook preserve-fds fd-limit)
+                                   (external-format :default) status-hook preserve-fds fd-limit
+                                   (use-posix-spawn nil))
   "Launch COMMAND with ARGUMENTS as its own process group and return a
 PROCESS-HANDLE without waiting for it to produce output or exit -- the
 low-level, asynchronous primitive RUN and COMMUNICATE are built on. Reach
@@ -100,11 +101,12 @@ RUN, which shares it."
           :search search :input input :output output :error error
           :environment environment :directory directory
           :external-format external-format :status-hook status-hook
-          :preserve-fds preserve-fds :fd-limit fd-limit))
+          :preserve-fds preserve-fds :fd-limit fd-limit
+          :use-posix-spawn use-posix-spawn))
 
 (defun %spawn (command arguments &key search input output error environment directory
                                    (external-format :default) status-hook preserve-fds fd-limit
-                                   defer-group-check)
+                                   (use-posix-spawn nil) defer-group-check)
   "SPAWN's implementation. DEFER-GROUP-CHECK skips the process-group check
 and records PID as the group: a caller whose child still rearranges its own
 group after exec (SPAWN-NATIVE's trampoline) must call
@@ -123,17 +125,51 @@ part stays in each clause."
             (%ensure (not (eq input t)) "INPUT T cannot safely isolate the child process group.")
             (%ensure (or (null fd-limit) (and (integerp fd-limit) (plusp fd-limit)))
                      "FD-LIMIT must be NIL or a positive integer.")
+            (when (and use-posix-spawn directory)
+              ;; SBCL's POSIX-SPAWN backend currently accepts DIRECTORY but
+              ;; does not apply it.  Check it before starting the wrapper so
+              ;; a bad directory follows the normal parent-side launch path.
+              (%ensure (uiop:directory-exists-p (%effective-directory directory))
+                       "DIRECTORY does not exist or is not a directory: ~S"
+                       directory))
+            (when (and use-posix-spawn directory (not search))
+              ;; The shell wrapper would otherwise report a missing command
+              ;; as a child exit status instead of preserving RUN-PROGRAM's
+              ;; parent-side launch error for :SEARCH NIL.
+              (%ensure (%executable-file-p
+                        (merge-pathnames (namestring command)
+                                         (%effective-directory directory)))
+                       "Executable ~S was not found in DIRECTORY: ~S"
+                       command directory))
             (when search
               (setf command (%resolve-executable command arguments environment directory)))
-            (setf raw
-                  (call-with-spawn-fd-limit
-                   fd-limit
-                   (lambda ()
-                     (sb-ext:run-program
-                      command arguments :search nil :input input :output output
-                      :error error :environment environment :directory directory
-                      :external-format external-format :status-hook status-hook
-                      :preserve-fds preserve-fds :wait nil :use-posix-spawn nil))))
+            (let* ((wrapper-p (and use-posix-spawn directory))
+                   (launch-command (if wrapper-p "/bin/sh" command))
+                   (wrapper-command
+                     (let ((name (namestring command)))
+                       (if (and (not search) (not (position #\/ name)))
+                           (concatenate 'string "./" name)
+                           name)))
+                   (launch-arguments
+                     (if wrapper-p
+                         (append
+                          (list "-c"
+                                "cd \"$1\" && shift 1 && exec \"$@\""
+                                "cl-process-kit-posix-spawn-wrapper"
+                                (namestring (%effective-directory directory))
+                                wrapper-command)
+                          arguments)
+                         arguments))
+                   (launch-directory (unless wrapper-p directory)))
+              (setf raw
+                    (call-with-spawn-fd-limit
+                     fd-limit
+                     (lambda ()
+                       (sb-ext:run-program
+                        launch-command launch-arguments :search nil :input input :output output
+                        :error error :environment environment :directory launch-directory
+                        :external-format external-format :status-hook status-hook
+                        :preserve-fds preserve-fds :wait nil :use-posix-spawn use-posix-spawn)))))
             (let* ((pid (sb-ext:process-pid raw))
                    (pgid (if defer-group-check pid (%verify-process-group pid))))
               (%log :info "process spawned" :program command :pid pid :pgid pgid)
@@ -217,7 +253,7 @@ part stays in each clause."
     (:stdout :output)
     (otherwise policy)))
 
-(defun spawn-command (command &key stdin stdout stderr)
+(defun spawn-command (command &key stdin stdout stderr use-posix-spawn)
   "SPAWN a COMMAND-SPEC: the low-level asynchronous primitive that reads its
 I/O policy, environment, search behavior, and directory from COMMAND's own
 slots. :STDIN/:STDOUT/:STDERR each override the spec's own policy for that
@@ -239,6 +275,7 @@ SPAWN."
                 :directory (command-directory command)
                 :external-format (if (eq (command-result-type command) :octets)
                                       :latin-1
-                                      (command-external-format command)))
+                                      (command-external-format command))
+                :use-posix-spawn use-posix-spawn)
       (when (and (eq input-policy :inherit) (streamp input-stream))
         (close input-stream)))))
