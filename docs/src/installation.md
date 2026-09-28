@@ -18,7 +18,7 @@ supported: the Nix flake, and a plain ASDF/local checkout.
     ```nix
     {
       inputs.cl-process-kit = {
-        url = "github:nerima-lisp/cl-process-kit/v3.3.1";
+        url = "github:nerima-lisp/cl-process-kit/v3.4.0";
         inputs.nixpkgs.follows = "nixpkgs";
       };
     }
