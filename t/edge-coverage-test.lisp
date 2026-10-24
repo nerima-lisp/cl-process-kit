@@ -126,7 +126,31 @@
         (((symbol-function 'process-kit::%join-copier)
           (lambda (&rest _) (declare (ignore _)) :timed-out)))
       (signals process-io-error
-        (run "/bin/sh" (list "-c" "printf payload"))))))
+        (run "/bin/sh" (list "-c" "printf payload")))))
+  (it "uses the communicate poll interval for fd copiers and preserves the default"
+    (let ((observed nil)
+          (lock (sb-thread:make-mutex :name "copier polling test"))
+          (await (symbol-function (quote process-kit::%await-fd-readable))))
+      (with-mocked-functions
+          (((symbol-function (quote process-kit::%await-fd-readable))
+            (lambda (&rest arguments)
+              (sb-thread:with-mutex (lock)
+                (push (third arguments) observed))
+              (apply await arguments))))
+        (dolist (case (list (cons nil 10)
+                            (cons (list :poll-interval 0.001d0) 1)
+                            (cons (list :poll-interval 0.025d0) 10)))
+          (let ((options (car case))
+                (expected (cdr case)))
+            (setf observed nil)
+            (with-process (process (%spawn-communicating "/bin/sh" (list "-c" "exit 0")))
+              (apply (function communicate) process options))
+            (sb-thread:with-mutex (lock)
+              (expect observed :to-be-truthy)
+              (expect (every (lambda (interval)
+                               (eql interval expected))
+                             observed)
+                      :to-be-truthy))))))))
 
 (describe "process-group signaling"
   (it "rejects an out-of-range signal number"

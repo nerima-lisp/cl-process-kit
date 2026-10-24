@@ -5,12 +5,11 @@
 
 (defparameter +copier-poll-interval-milliseconds+
   (round (* 1000 +default-poll-interval+))
-  "POLL(2) timeout, in milliseconds, for one turn of a copier thread's read
-loop -- +DEFAULT-POLL-INTERVAL+ in the unit POLL(2) takes. It bounds how long
-a copier can stay parked before it notices %DRAIN-COPIERS has asked it to
-stop, so it is also the granularity of DRAIN-TIMEOUT-SECONDS. Deliberately
-the same cadence COMMUNICATE's own deadline loop already wakes at, so an
-interruptible copier costs no wakeup rate the library was not already paying.")
+  "POLL(2) timeout, in milliseconds, for one turn of a copier thread read loop.
+It bounds how long a copier can stay parked before noticing a drain stop.
+COMMUNICATE uses a smaller per-call :POLL-INTERVAL when supplied; larger
+per-call values are capped here to preserve bounded stop detection. The default
+matches COMMUNICATE default polling cadence.")
 
 (defparameter +copier-stop-grace-seconds+ 0.25d0
   "How long %DRAIN-COPIERS waits for a copier to honour a cooperative stop

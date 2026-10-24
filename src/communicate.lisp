@@ -156,8 +156,8 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
                                         external-format decoding-error-policy))
          (stderr-capture (%make-capture max-output-characters result-type
                                         external-format decoding-error-policy))
-         (stdout-copier (%start-copier stdout-stream stdout-capture :stdout))
-         (stderr-copier (%start-copier stderr-stream stderr-capture :stderr))
+         (stdout-copier (%start-copier stdout-stream stdout-capture :stdout poll-interval))
+         (stderr-copier (%start-copier stderr-stream stderr-capture :stderr poll-interval))
          (stdin-feeder (%start-feeder process input external-format))
          (copier-entries (list (cons stdin-stream stdin-feeder)
                                (cons stdout-stream stdout-copier)

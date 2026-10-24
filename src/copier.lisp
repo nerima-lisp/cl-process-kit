@@ -13,7 +13,9 @@ copier reads. COMMUNICATE-ASYNC binds this to publish :STDOUT/:STDERR
 PROCESS-EVENTs -- the continuation-passing seam between the synchronous
 copier threads and the asynchronous event queue.")
 
-(defun %await-fd-readable (fd stop-requested-fn)
+(defun %await-fd-readable (fd stop-requested-fn
+                           &optional (poll-interval-milliseconds
+                                      +copier-poll-interval-milliseconds+))
   "Park until FD has bytes (or EOF) to offer, returning :READY -- or return
 :STOPPED as soon as STOP-REQUESTED-FN reports that %DRAIN-COPIERS has given up
 waiting for this copier.
@@ -35,10 +37,13 @@ interval plus one bounded READ(2). Output still buffered at that point is
 forfeit, which is precisely what blowing the drain deadline means."
   (loop
     (when (funcall stop-requested-fn) (return :stopped))
-    (when (sb-unix:unix-simple-poll fd :input +copier-poll-interval-milliseconds+)
+    (when (sb-unix:unix-simple-poll fd :input poll-interval-milliseconds)
       (return :ready))))
 
-(defun %copy-stream-bounded (input capture stream-name event-sink stop-requested-fn)
+(defun %copy-stream-bounded (input capture stream-name
+                             event-sink stop-requested-fn
+                             &optional (poll-interval-milliseconds
+                                        +copier-poll-interval-milliseconds+))
   (labels ((emit (buffer count)
              (%capture-append capture buffer count)
              (when event-sink (funcall event-sink stream-name (subseq buffer 0 count))))
@@ -49,10 +54,14 @@ forfeit, which is precisely what blowing the drain deadline means."
                      while (plusp count)
                      do (emit buffer count))))
            (copy-fd-octets ()
-             (let ((buffer (make-array +default-copy-buffer-size+ :element-type '(unsigned-byte 8)))
+             (let ((buffer (make-array +default-copy-buffer-size+
+                                       :element-type '(unsigned-byte 8)))
                    (fd (sb-sys:fd-stream-fd input)))
                (sb-sys:with-pinned-objects (buffer)
-                 (loop while (eq (%await-fd-readable fd stop-requested-fn) :ready)
+                 (loop while
+                         (eq (%await-fd-readable
+                              fd stop-requested-fn poll-interval-milliseconds)
+                             :ready)
                        for count =
                          (handler-case (sb-posix:read fd (sb-sys:vector-sap buffer) (length buffer))
                            (sb-posix:syscall-error (condition)
@@ -86,16 +95,21 @@ exact catch-and-record shape, differing only in what WORK actually does."
              (%copier-condition ,copier)
              (make-condition 'process-io-error :stream ,stream-name :cause condition)))))
 
-(defun %start-copier (input capture stream-name)
+(defun %start-copier (input capture stream-name
+                      &optional (poll-interval +default-poll-interval+))
   (when input
     (let ((copier (%make-copier))
-          (event-sink *process-event-sink*))
+          (event-sink *process-event-sink*)
+          (poll-interval-milliseconds
+            (min +copier-poll-interval-milliseconds+
+                 (round (* 1000 poll-interval)))))
       (setf (%copier-thread copier)
             (sb-thread:make-thread
              (lambda ()
                (%run-copier-thread copier stream-name
                  (%copy-stream-bounded input capture stream-name event-sink
-                                       (lambda () (%copier-stop-requested-p copier)))))
+                                       (lambda () (%copier-stop-requested-p copier))
+                                       poll-interval-milliseconds)))
              :name (format nil "process-kit ~A copier" stream-name)))
       copier)))
 
