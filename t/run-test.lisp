@@ -11,7 +11,6 @@
                      (result (run-command
                              (make-command (namestring env-program) nil :environment-policy nil))))
                 (expect (string= (process-result-stdout result) "") :to-be-truthy)))
-
           (it "run-command applies environment updates and deletions"
               (let* ((command (make-command "/bin/sh"
                                             (list "-c" "printf %s:${DROP+present} \"$KEEP\"")
@@ -28,6 +27,10 @@
                                            :stderr :stdout))))
                 (expect (string= (process-result-stdout result) "outerr") :to-be-truthy)
                 (expect (string= (process-result-stderr result) "") :to-be-truthy)))
+          (it "run-command passes poll interval validation to communicate"
+            (signals simple-error
+              (run-command (make-command (%true-program) nil)
+                           :poll-interval 0)))
 
           (it "run-command cancels a blocked stdin write"
               (let* ((token (make-cancellation-token))

@@ -168,6 +168,7 @@ PROCESS-EXIT-ERROR unless it succeeds."
                     (on-cancel :error)
                     (max-output-characters +default-output-limit+)
                     (drain-timeout-seconds +default-drain-timeout-seconds+)
+                    (poll-interval +default-poll-interval+)
                     (use-posix-spawn nil))
   "Run COMMAND (a validated COMMAND-SPEC) and return a PROCESS-RESULT,
 mirroring RUN but reading its I/O policy, environment, and search behavior
@@ -188,28 +189,18 @@ running, or is composed into a pipeline (see RUN-PIPELINE)."
    (let ((result
           (communicate
            process
-           :input
-           input
-           :timeout
-           timeout
-           :grace-period
-           grace-period
-           :on-timeout
-           :return
-           :on-cancel
-           :return
-           :cancellation-token
-           cancellation-token
-           :max-output-characters
-           max-output-characters
-           :drain-timeout-seconds
-           drain-timeout-seconds
-           :result-type
-           (command-result-type command)
-           :external-format
-           (command-external-format command)
-           :decoding-error-policy
-           (command-decoding-error-policy command))))
+           :input input
+           :timeout timeout
+           :grace-period grace-period
+           :on-timeout :return
+           :on-cancel :return
+           :cancellation-token cancellation-token
+           :max-output-characters max-output-characters
+           :drain-timeout-seconds drain-timeout-seconds
+           :poll-interval poll-interval
+           :result-type (command-result-type command)
+           :external-format (command-external-format command)
+           :decoding-error-policy (command-decoding-error-policy command))))
      (%finalize-run-result
       result
       (command-program command)
