@@ -359,6 +359,7 @@
     (let* ((task
             (run-command-async
              (make-command "/bin/sh" (list "-c" "printf out; printf err >&2"))
+             :use-posix-spawn t
              :event-callback
              (lambda (event)
                (when (eq (process-event-kind event) :terminal)

@@ -240,6 +240,7 @@ reap the child before re-signaling the condition."
                          (%plist-without
                           options
                           (list
+                           :use-posix-spawn
                            :event-callback
                            :result-type
                            :external-format
