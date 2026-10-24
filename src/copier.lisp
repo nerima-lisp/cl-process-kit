@@ -102,7 +102,7 @@ exact catch-and-record shape, differing only in what WORK actually does."
           (event-sink *process-event-sink*)
           (poll-interval-milliseconds
             (min +copier-poll-interval-milliseconds+
-                 (round (* 1000 poll-interval)))))
+                 (max 1 (round (* 1000 poll-interval))))))
       (setf (%copier-thread copier)
             (sb-thread:make-thread
              (lambda ()

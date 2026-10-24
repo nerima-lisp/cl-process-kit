@@ -138,6 +138,7 @@
                 (push (third arguments) observed))
               (apply await arguments))))
         (dolist (case (list (cons nil 10)
+                            (cons (list :poll-interval 0.0001d0) 1)
                             (cons (list :poll-interval 0.001d0) 1)
                             (cons (list :poll-interval 0.025d0) 10)))
           (let ((options (car case))
