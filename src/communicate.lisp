@@ -158,8 +158,8 @@ Returns POLICY, so a caller that resolves one can guard it in passing."
                                         external-format decoding-error-policy))
          (stdout-copier (%start-copier stdout-stream stdout-capture :stdout poll-interval))
          (stderr-copier (%start-copier stderr-stream stderr-capture :stderr poll-interval))
-         (stdin-feeder (%start-feeder process input external-format))
-         (copier-entries (list (cons stdin-stream stdin-feeder)
+         (stdin-feeder nil)
+         (copier-entries (list (cons stdin-stream nil)
                                (cons stdout-stream stdout-copier)
                                (cons stderr-stream stderr-copier)))
          (timed-out-p nil)
@@ -186,6 +186,8 @@ passed in rather than hard-coded here."
                (ignore-errors (process-wait process :timeout grace-period))))
       (unwind-protect
            (progn
+             (setf stdin-feeder (%start-feeder process input external-format))
+             (setf (cdr (first copier-entries)) stdin-feeder)
              (when deadline
                (unless (%wait-until-terminal process deadline poll-interval clock-fn sleep-fn)
                  (setf timed-out-p t)

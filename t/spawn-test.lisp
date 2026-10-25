@@ -8,6 +8,24 @@
     (expect (not (null process)) :to-be-truthy)
     (process-wait process)
     (expect (process-alive-p process) :to-be nil)))
+ (it "empty inputs close piped stdin inline without a feeder worker"
+  (dolist (input (list nil "" (make-array 0 :element-type '(unsigned-byte 8))))
+    (with-process
+        (process
+          (spawn "/bin/sh" (list "-c" "read value || exit 0; exit 1")
+                 :input :stream :output :stream :error :stream))
+      (let ((original-feeder (function process-kit::%start-feeder))
+            (feeder-calls 0))
+        (with-mocked-functions
+            (((symbol-function 'process-kit::%start-feeder)
+              (lambda (&rest arguments)
+                (incf feeder-calls)
+                (let ((feeder (apply original-feeder arguments)))
+                  (expect feeder :to-be nil)
+                  feeder))))
+          (let ((result (communicate process :input input)))
+            (expect (process-result-exit-code result) :to-be 0)))
+        (expect feeder-calls :to-be 1)))))
  (it
   "process-alive-p is true right after spawning a long-running process"
   (let ((process (spawn "/bin/sh" (list "-c" "sleep 5"))))

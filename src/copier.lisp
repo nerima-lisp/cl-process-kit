@@ -237,11 +237,19 @@ copier hit on its own, before any of this, are re-signalled at the end."
 (defun %start-feeder (process input external-format)
   (let ((stream (process-stdin process)))
     (when stream
-      (let ((feeder (%make-copier)))
-        (setf (%copier-thread feeder)
-              (sb-thread:make-thread
-               (lambda ()
-                 (%run-copier-thread feeder :stdin
-                   (%write-process-input process input external-format)))
-               :name "cl-process-kit stdin feeder"))
-        feeder))))
+      (if (or (null input)
+              (and (stringp input) (zerop (length input)))
+              (and (typep input '(vector (unsigned-byte 8)))
+                   (zerop (length input))))
+          (progn
+            ;; Preserve the stdin pipe contract; closing it supplies EOF without a worker.
+            (%write-process-input process input external-format)
+            nil)
+          (let ((feeder (%make-copier)))
+            (setf (%copier-thread feeder)
+                  (sb-thread:make-thread
+                   (lambda ()
+                     (%run-copier-thread feeder :stdin
+                       (%write-process-input process input external-format)))
+                   :name "cl-process-kit stdin feeder"))
+            feeder)))))
