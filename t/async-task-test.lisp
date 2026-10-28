@@ -450,6 +450,58 @@
     (cancel-process task)
     (await-process task)))
  (it
+  "returns with the task mutex or invokes timeout after its deadline"
+  (let* ((task (process-kit::%make-process-task))
+         (mutex (process-kit::%process-task-mutex task))
+         (holder-ready (sb-thread:make-semaphore))
+         (release-holder (sb-thread:make-semaphore))
+         (deadline nil)
+         (holder-acquired-p nil)
+         (returned-with-mutex nil)
+         (timeout-called-at nil)
+         (timeout-held-mutex nil)
+         (holder nil))
+    (unwind-protect
+        (progn
+          (sb-thread:grab-mutex mutex)
+          (setf holder
+                (sb-thread:make-thread
+                 (lambda ()
+                   (sb-thread:signal-semaphore holder-ready)
+                   (sb-thread:grab-mutex mutex)
+                   (unwind-protect
+                       (progn
+                         (setf holder-acquired-p t)
+                         (sb-thread:wait-on-semaphore release-holder))
+                     (sb-thread:release-mutex mutex)))))
+          (unless (sb-thread:wait-on-semaphore holder-ready :timeout 1.0d0)
+            (error "The mutex holder thread did not become ready"))
+          (setf deadline (process-kit::%deadline-from-timeout 0.05d0))
+          (catch :timeout
+            (process-kit::%wait-on-task
+             task deadline
+             (lambda ()
+               (setf timeout-called-at (get-internal-real-time)
+                     timeout-held-mutex (sb-thread:holding-mutex-p mutex))
+               (sb-thread:signal-semaphore release-holder)
+               (throw :timeout :timeout)))
+            (setf returned-with-mutex (sb-thread:holding-mutex-p mutex))
+            :returned)
+          (when (sb-thread:holding-mutex-p mutex)
+            (sb-thread:release-mutex mutex)))
+      (when (sb-thread:holding-mutex-p mutex)
+        (sb-thread:release-mutex mutex))
+      (when holder
+        (sb-thread:signal-semaphore release-holder)
+        (sb-thread:join-thread holder)))
+    (expect
+     (or returned-with-mutex
+         (and timeout-called-at
+              (not timeout-held-mutex)
+              (>= timeout-called-at deadline)))
+     :to-be-truthy)
+    (expect holder-acquired-p :to-be-truthy)))
+ (it
   "await-process returns NIL when its own timeout expires while the task is still running"
   (let* ((process (%spawn-sleeping "1"))
          (task (communicate-async process)))

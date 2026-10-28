@@ -143,23 +143,38 @@ iterations."
   (and timeout (+ (get-internal-real-time) (* timeout internal-time-units-per-second))))
 
 (defun %wait-on-task (task deadline on-timeout)
-  "Block on TASK's condition variable until notified, or call the ON-TIMEOUT
-thunk instead of blocking (or after waiting the last of it out) once DEADLINE
--- a GET-INTERNAL-REAL-TIME tick, or NIL for no deadline -- has passed.
-
-NEXT-PROCESS-EVENT and AWAIT-PROCESS each wait on this same condition
-variable across a polling loop and differ only in what they return on a
-timeout, which is why that difference is passed in as a continuation rather
-than this function returning a value for the caller to check."
-  (if deadline (let ((remaining
-                      (/ (- deadline (get-internal-real-time)) internal-time-units-per-second)))
-                 (if (<= remaining 0) (funcall on-timeout)
-                   (sb-thread:condition-wait
-                    (%process-task-waitqueue task)
-                    (%process-task-mutex task)
-                    :timeout
-                    remaining)))
-    (sb-thread:condition-wait (%process-task-waitqueue task) (%process-task-mutex task))))
+  "Block on TASK until notified, retaining its mutex on normal return.
+If a timed wait expires without reacquiring the mutex, try to regain it only
+until DEADLINE, then invoke ON-TIMEOUT without the mutex."
+  (if deadline
+      (loop for remaining =
+              (/ (- deadline (get-internal-real-time))
+                 internal-time-units-per-second)
+            do (when (<= remaining 0)
+                 (return (funcall on-timeout)))
+               (let ((wait-result
+                       (sb-thread:condition-wait
+                        (%process-task-waitqueue task)
+                        (%process-task-mutex task)
+                        :timeout
+                        remaining)))
+                 (when (sb-thread:holding-mutex-p (%process-task-mutex task))
+                   (return wait-result))
+                 (loop for remaining =
+                         (/ (- deadline (get-internal-real-time))
+                            internal-time-units-per-second)
+                       do (when (<= remaining 0)
+                            (return-from %wait-on-task
+                              (funcall on-timeout)))
+                          (when (sb-sys:without-interrupts
+                                  (sb-sys:allow-with-interrupts
+                                    (sb-thread:grab-mutex
+                                     (%process-task-mutex task)
+                                     :timeout remaining)))
+                            (return-from %wait-on-task wait-result)))))
+      (sb-thread:condition-wait
+       (%process-task-waitqueue task)
+       (%process-task-mutex task))))
 
 (defun %next-event-requested-sequence (cursor first-sequence)
   (or cursor first-sequence 1))
